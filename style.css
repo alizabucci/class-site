@@ -1,0 +1,23 @@
+body{
+  background-color: #4c51a1;
+  font-family:helvetica;
+}
+h1{
+  font-size: 120px;
+  color:yellow;
+  margin-bottom: 20px;
+  text-align: right;
+  background-color:#7aaede;
+  margin-top: 50px;
+}
+a{
+  color:#7aaede;
+  text-decoration:none;
+  font-size: 75px;
+  margin-top: 50px;
+  margin-left: 50px;
+  margin-right: 50px;
+}
+a:hover {
+  background-color: yellow;
+}
