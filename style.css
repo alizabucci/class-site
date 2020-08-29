@@ -21,3 +21,29 @@ a{
 a:hover {
   background-color: yellow;
 }
+
+p{
+  text-align: center;
+  font-size: 30px;
+  color:yellow;
+}
+
+.center{
+  display:block;
+  margin-left:auto;
+  margin-right:auto;
+  width:50%;
+}
+
+h2{
+  text-align: center;
+  font-size: 75px;
+  color:yellow;
+}
+
+.back{
+  color:#7aaede;
+  text-decoration:none;
+  font-size: 30px;
+  text-align:right
+}
