@@ -1,0 +1,2351 @@
+/*globals jQuery, Drupal, require, define, Modernizr*/
+/**
+ * IGA Webform customizations
+ */
+define("IGA.common.webform", ["jquery", "IGA.events"], function($, events){
+	"use strict";
+	var Webform = {
+		//## Convert Drupal datepicker into a simple html5 date field.
+		dateInput: function(index, el, suffix){
+			var $date = $(el),
+				$datepicker = $date.find(".webform-container-inline, .container-inline, .container-inline-date" ),
+				$day = $datepicker.find("select.day, select.date-day, input.day, select[name$=\"[day]\"]"),
+				$month = $datepicker.find("select.month, select.date-month, input.month, select[name$=\"[month]\"]"),
+				$year = $datepicker.find("select.year, select.date-year, input.year, select[name$=\"[year]\"]"),
+				name = ($month.attr("name") || "").split("[")[0],
+				$input;
+			suffix = suffix || "iga";
+			$input = $date.find("input[type=date]");
+			if($input.length === 0){
+				$input = $('<input class="iga-common-webform-date" type="date">');
+			}else{
+				$input.addClass("iga-common-webform-date").show();
+			}
+			if(name !== ""){
+				// If the input is provided then we're using it to submit, update the name. It can't conflict w/ the Drupal form field.
+				$input.attr("name", name +"."+suffix);
+			}
+
+			$datepicker.hide().after($input);
+			$input.on("change", function(){
+				//### When the date input is updated
+				var date = $input.val().split("-"), //yy-mm-dd regardless of user display
+					year = date[0],
+					month = date[1],
+					day = date[2];
+				if(month){ $month.val(month.replace(/^0/,'')); }
+				if(day){ $day.val(day.replace(/^0/,'')); }
+				if(year){ $year.val(year); }
+			});
+			//### Initialize the date input with the datepicker
+			var day = $day.val(),
+				month = $month.val(),
+				year = $year.val();
+			if(day && day.length === 1){ day = "0"+day; }
+			if(month && month.length === 1){ month = "0"+month; }
+			if(year && year !== "" && day !== "" && month !== ""){
+				require(["IGA.utils"], function(utils){
+					var _date = year+"-"+month+"-"+day,
+						now = new Date();
+					// Turn off input initialization if the date is set to today / the default
+					if(utils.dateFormat(now.getTime() + now.getTimezoneOffset() * 60000, 'yyyy-mm-dd') !== _date){
+						$input.val(_date);
+					}
+				});
+			}
+			var autocomplete = $month.attr("autocomplete");
+			if(autocomplete && autocomplete.indexOf("bday") === 0){
+				$input.attr("autocomplete", "bday");
+			}
+		},
+		//## Add autocomplete attributes to date selects.
+		dobAutoComplete: function(index, el){
+			var $date = $(el),
+				$datepicker = $date.find(".webform-container-inline"),
+				$day = $datepicker.find("select.day, select.date-day"),
+				$month = $datepicker.find("select.month, select.date-month"),
+				$year = $datepicker.find("select.year, select.date-year, input.year"),
+				autocomplete = $datepicker.find("select.month").attr("autocomplete");
+			if(autocomplete && autocomplete.indexOf("bday") === 0){
+				$day.attr("autocomplete", "bday-day");
+				$month.attr("autocomplete", "bday-month");
+				$year.attr("autocomplete", "bday-year");
+			}
+
+		},
+		//## Apply phone number field formatting.
+		phoneInput: function(index, el){
+			var $el = $(el);
+			require(["jquery", "jquery/formance/jquery.formance.min"], function($){
+				$el.formance('format_phone_number');
+			});
+		},
+		//## Auto-fill form based on user profile.
+		updateUser: function($webform, user, ae_user){
+			var $email = $webform.find("input.email"),
+				$firstname = $webform.find("input[autocomplete='given-name']"),
+				$lastname = $webform.find("input[autocomplete='family-name']"),
+				$dob = $webform.find("input[autocomplete='bday']"),
+				$dob_select = $webform.find(".webform-component-date select[autocomplete='bday-year'], .webform-component-date input[autocomplete='bday-year']"),
+				$zip = $webform.find("input[autocomplete='postal-code']"),
+				$city = $webform.find("input[autocomplete='address-level2']"),
+				$state = $webform.find("input[autocomplete='address-level1']"),
+				$country = $webform.find("input[autocomplete='country'], select[autocomplete='country']");
+
+			user = user || {};
+			ae_user = ae_user || user.ae_user || {data:{}};
+
+			if($email.length > 0 && !$email.val()){
+				$email.val(user.mail || ae_user.data.Email);
+			}
+			if($firstname.length > 0 && !$firstname.val()){
+				$firstname.val(user.field_first_name || ae_user.data.FirstName);
+			}
+			if($lastname.length > 0 && !$lastname.val()){
+				$lastname.val(user.field_last_name || ae_user.data.LastName);
+			}
+
+			if($dob.length > 0 || $dob_select.length > 0){
+				var dob = null;
+				if(user.field_birthday){
+					dob = user.field_birthday.split(' ');
+					if(dob.length > 0){ dob = dob[0]; }
+				}
+				dob = dob || ae_user.data.BirthDate || "";
+				if($dob.length > 0 && !$dob.val()){
+					$dob.val(dob).trigger('change');
+				}else if($dob_select.length > 0){
+					$dob_select = $dob_select.closest(".webform-component-date ");
+					var $day = $dob_select.find("select.day"),
+						$month = $dob_select.find("select.month"),
+						$year = $dob_select.find("select.year, input.year"),
+						dobArr = dob.split("-");
+					if(dobArr.length === 3){
+						var year = dobArr[0], month = dobArr[1], day = dobArr[2];
+						$year.val(year);
+						$month.val(month.replace(/^0/,''));
+						$day.val(day.replace(/^0/,''));
+					}
+				}
+			}
+			var user_address = user.field_user_address || {};
+			if($zip.length > 0 && !$zip.val()){
+				$zip.val(user_address.postal_code || ae_user.data.PostCode);
+			}
+			if($city.length > 0 && !$city.val()){
+				$city.val(user_address.city || ae_user.data.City);
+			}
+			if($state.length > 0 && !$state.val()){
+				$state.val(user_address.state || ae_user.data.State).trigger("change");
+			}
+			if($country.length > 0 && !$country.val()){
+				$country.val(user_address.country || ae_user.data.CountryCode).trigger("change");
+			}
+		},
+		countryCASL: function($webform){
+			var $country = $webform.find('select[name="submitted[country]"], select[name="submitted[address][country]"], select[autocomplete^="country"]');
+			$country.on("change", function(){
+				var $this = $(this), country = $this.val();
+				events.trigger("country.manual", [country]);
+			});
+		}
+	};
+	return Webform;
+});
+
+(function(jQuery) {
+	"use strict";
+	// # Drupal Behaviors
+	var dsicw = Drupal.settings.iga_common_webform || {};
+	Drupal.behaviors.iga_common_webform = {
+		attach: function(context, settings){
+			require(["jquery", "IGA.events", "IGA.common.webform"], function($, events, Webform){
+				var $context = $(context)
+
+				//### Update form values for logged in users when:
+				require(["IGA.user"], function(user){
+					var formSelector = "form.webform-client-form.iga-common-webform";
+					$context.find(formSelector).addBack(formSelector).once("iga-common-webform", function(){
+						var $webform = $(this),
+							nid = $webform.attr("data-nid"),
+							settings = dsicw["nid-"+nid] || {};
+
+						if (Modernizr && Modernizr.inputtypes.date && settings.html5_date){
+							// Add HTML5 date input if it is available;
+							$webform.find(".webform-component-date").once("iga-common-webform", Webform.dateInput);
+						}else{
+							// otherwise, at least add autocomplete date to the select
+							$webform.find(".webform-component-date").once("iga-common-webform", Webform.dobAutoComplete);
+						}
+						$webform.find("#webform-component-phone-number input").once("iga-common-webform", Webform.phoneInput);
+
+						if(user.uid){
+							// the user is logged in,
+							Webform.updateUser($webform, user);
+						}else{
+							events.on("login", function(user, data){
+								// once the user has logged in,
+								Webform.updateUser($webform, user, data ? data.ae_user : null);
+							});
+						}
+						function ae_user(ae_user, state, sso){
+							var dbae = Drupal.behaviors.ae_social_login || {};
+							// or when the user is logged into AE.
+							Webform.updateUser($webform, null, ae_user);
+						}
+
+						events.on("ae_user", ae_user).replay("ae_user", ae_user);
+						events.on("ae_login", ae_user).replay("ae_login", ae_user);
+
+						// ### CASL
+						Webform.countryCASL($webform);
+
+					});
+				});
+			});
+		}
+	};
+
+})(jQuery);;
+/**
+ * @file Twitter, Facebook, and Google+ social scripts and GA Event tracking
+ */
+
+(function(){
+	"use strict";
+	// # Social Scripts
+
+	// ## Google Analytics Event Tracking
+	var __icsaStart = Date.now(),
+		ga = (typeof window.ga === "undefined") ? function(){} : window.ga;
+	var attachGAEvents =
+	IGA.social = {
+		attach: {
+			facebook: function(FB){
+				if(IGA.social.fbAttached){ return; }else{ IGA.social.fbAttached = true; }
+				FB.Event.subscribe('edge.create',
+					function(href, widget) {
+						//when a user has liked a url.
+						ga("send", "event", "Social", "facebook.like", href );
+					}
+				);
+				FB.Event.subscribe('edge.remove',
+					function(href, widget) {
+						//when a user has unliked a url.
+						ga("send","event", "Social", "facebook.unlike", href );
+					}
+				);
+				FB.Event.subscribe('message.send',
+					function(href) {
+						//when a user has used the send button.
+						ga("send", "event", "Social", "facebook.message.send", href );
+					}
+				);
+				ga('send', 'timing', 'Facebook', 'fbAsyncInit', Date.now() - __icsaStart);
+			},
+			googleplus: function(){
+				if(IGA.social.gpAttached){ return; }else{ IGA.social.gpAttached = true; }
+				IGA.onYtEvent = function(payload){
+					if (payload.eventType === 'subscribe') {
+						ga("send", "event", "Social", "youtube.subscribe", payload.channelExternalId );
+					} else if (payload.eventType === 'unsubscribe') {
+						ga("send","event", "Social", "youtube.unsubscribe", payload.channelExternalId );
+					}
+				};
+
+				window.googleplusone_callback = function (data){//{"href": target URL, "state": "on"|"off" }
+					ga("send", "event", "Social", "googleplus.plusone"+((data.state === "off")?".off":""), data.href );
+				};
+				ga('send', 'timing', 'Googleplus', 'gplusLoad', Date.now() - __icsaStart);
+			},
+			twitter: function(twttr){
+				if(IGA.social.twAttached){ return; }else{ IGA.social.twAttached = true; }
+				var event_names = {
+					"click" :   "" ,// Track first interaction click
+					"tweet" :  "",
+					"retweet" : "source_tweet_id",
+					"follow" : "screen_name",
+					"favorite" : "tweet_id"
+				};
+				function trackIntent(intent_event){
+					if(intent_event){
+						var label = intent_event.type==="click" ? intent_event.region : (intent_event.data) ? intent_event.data[event_names[intent_event.type]] : "";
+						ga("send", "event", "Social", "twitter." + intent_event.type, label);
+					}
+				}
+				for(var event_name in event_names){
+					if(event_names.hasOwnProperty(event_name)){
+						twttr.events.bind(event_name, trackIntent);
+					}
+				}
+				ga('send', 'timing', 'Twitter', 'twttr.ready', Date.now() - __icsaStart);
+			}
+		}
+	};
+})();;
+/**
+ *
+ */
+//# Main Carousel Banner Analytics Tracking
+define("bolero.slickAnalytics", ["jquery", "underscore", "IGA.events", "bolero.analytics", "googleanalytics", "jquery/plugins/jquery.viewport.min"],
+	function($, _, events, boleroAnalytics){
+	"use strict";
+	function SlickAnalytics(el){
+		this.$el = $(el);
+		this.$slides = [];
+		this.noDupes = {};
+		var $el = this.$el, name = "NONE", eventId = "slick";
+		if($el.is(".l-banner .l-region--banner")){
+			name = "Banner";
+			eventId = "banner";
+		}else if($el.is(".view")){
+			name = $el.attr("data-view-name");
+			eventId = "view-"+$el.attr("data-view-id")+"--"+$el.attr("data-view-display-id");
+		}
+		this.name = name;
+		this.eventId = eventId;
+		this.initialized = false;
+		this.viewed = [];
+	}
+
+	SlickAnalytics.prototype.init = function(slider){
+		var self = this;
+		this.slider = slider;
+		this.$slides = slider.$slides;
+		this.trackClicks();
+		var _trackViews = _.bind(this.trackViews, this);
+		IGA.events.on("bolero."+this.eventId+".beforechange", function(){ self.noDupes = {}; });//clear out duplicate detection buffer
+		IGA.events.on("bolero."+this.eventId+".afterchange", _trackViews);
+		if(!this.initialized){
+			_.defer(_trackViews);
+		}
+		$(window).on("scroll", _.debounce(_trackViews, 250));
+		if(this.$slides){
+			this.$slides.not(".slick-cloned, .bolero-sa-initialized").addClass("bolero-sa-initialized");
+		}
+		this.initialized = true;
+	};
+
+	 function _findOriginalSlide($clone, $slides){
+		var classes = $clone[0].className.replace("slick-cloned", "").trim(),
+			slideSelector = "."+classes.split(/\s+/).join("."), //let's get all the classes into a selector
+			$originalSlide = $slides.filter(slideSelector).first();
+		//here it is, use this slide index instead.
+		return $originalSlide;
+	}
+
+	SlickAnalytics.prototype.trackViews = function(){
+		var self = this,
+			_slideZTop = 0;
+		if(!this.$slides){ return; }
+		_.each(this.$slides, function(el){
+			var _z = parseInt(el.style["z-index"]);
+			if(_z > _slideZTop){ _slideZTop = _z; }
+		});
+
+		this.$slides.siblings().each(function(i){//.not(".slick-cloned")
+			var $this = $(this),
+				$slide = $this,
+				$node = $slide.children(".node"),
+				z_index = parseInt(this.style["z-index"] || 0),
+				offset = $this.offset(),
+				$container = $this.parent().parent(),
+				container_offset = $container.offset(),
+				container_width = $container.width();
+			//## Track which slides have been seen
+			if( z_index >= _slideZTop && $this.is(":visible") && //not faded out or display:none
+				$.inviewport($this, { threshold: -100 }) && !$.leftofscreen($this, {threshold: 100}) && //on the screen
+				offset.left - container_offset.left >= 0 && offset.left - container_offset.left < container_width && //in the container
+				!self.noDupes[i])
+			{
+				//To count slides must be on the top of the z-index, visible, within the viewport, and within the container.
+				if($this.is(".slick-cloned")){
+					//... but what is the actual, not-cloned slide?
+					$slide = _findOriginalSlide($this, self.$slides);
+				}
+				var slide_num = _.indexOf(self.$slides, $slide[0]) + 1,
+					ga_label = boleroAnalytics.label($node) || "slide-"+slide_num,
+					timing = Date.now() - boleroAnalytics.start;// track when the node was viewed
+				self.noDupes[i] = true;
+				//Track that the banner at this index has been seen.
+				if(!self.viewed[slide_num]){ ga("send", "event", "Carousel : " + self.name, "impression", ga_label, timing, {nonInteraction: 1}); }
+				self.viewed[slide_num] = true;
+				//TODO add nodeID tracking when using DS.
+			}
+		});
+	};
+
+	SlickAnalytics.prototype.trackClicks = function(){
+		//## Track clicks on slides
+		var self = this;
+		if(!this.$slides){ return; }
+		this.$slides.siblings().not(".bolero-sa-initialized").each(function(i){
+			// that haven't already been initialized
+			$(this).one("click", function(){
+				var $this = $(this),
+					$slide = $this,
+					$node = $slide.children(".node");
+				if($this.is(".slick-cloned")){
+					//... but what is the actual, not-cloned slide?
+					$slide = _findOriginalSlide($this, self.$slides);
+				}
+				var slide_num = _.indexOf(self.$slides, $slide[0]) + 1,
+					ga_label = boleroAnalytics.label($node)|| "slide-"+slide_num;
+				ga("send", "event", "Carousel : " + self.name, "click", ga_label, 1);
+			});
+		});
+	};
+
+	return SlickAnalytics;
+});;
+/*globals require, requirejs, define, jQuery, Drupal, IGA */
+define("bolero.form", ["jquery", "underscore", "Drupal.ajax"], function ($, _) {
+	"use strict";
+	function BoleroForm($container, form_id, data, settings) {
+		//TODO change settings.useAjax -> settings.ajaxLoad
+		this.data = data || {};
+		this.settings = settings || {};
+		//TODO if $container.is("form") wrap it.
+		if($container.is("form")){
+			if(!$container.parent().is(".bolero-ajax-form-wrapper")){
+				$container.parent().addClass("bolero-ajax-form-wrapper");
+			}
+			$container = $container.parent();
+		}else if(!$container.is(".bolero-ajax-form-wrapper")){
+			$container.addClass("bolero-ajax-form-wrapper");
+		}
+		//Check the registry for existing forms
+		this.$container = $container;
+		if(!form_id){
+			form_id = $container.attr("data-bolero-form-id");
+		}
+		this.$form = $container.children("form");
+
+		if(this.$form.length > 0){
+			if(!form_id){
+				form_id = this.$form.find("input[name=form_id]").val();
+			}
+			this.setupForm();
+		}
+		if(BoleroForm.registry[form_id]){
+			var bf = BoleroForm.registry[form_id];
+			if(data){ bf.data = data; }
+			_.extend(bf.settings, settings);
+			return bf;
+		}
+		this.form_id = form_id;
+		this.endpoint = "/api/bolero/form/"+form_id;
+		this.ajax = new Drupal.ajax(null, $container, { url: this.endpoint });
+		this.initSettings();
+		//TODO use form_build_id ?
+
+		BoleroForm.registry[form_id] = this;
+		return this;
+	}
+
+	BoleroForm.registry = [];
+
+	BoleroForm.prototype.delete = function(){
+		delete BoleroForm.registry[this.form_id];
+		this.$container.remove();
+	};
+
+	BoleroForm.prototype.load = function(reload){
+		if(reload === true){
+			this.$form.remove();
+		}
+		if(this.$form.length === 0){
+			return this.get();
+		}else{
+			var deferred = $.Deferred();
+			deferred.resolve(false);
+			//return a jQuery promise to mimic $.ajax().done()
+			return deferred.promise();
+		}
+	};
+
+	BoleroForm.prototype.request = function(endpoint){
+		endpoint = this.endpoint + (endpoint || "");
+		if(this.inProgress){ return $.Deferred().promise(); }
+		var self = this,
+			postData = this.$form.serializeArray() || [];
+		//add ajax_page_state to allow drupal_add_js/css ajax to work.
+		_.each(["css", "js"], function(type){
+			if(Drupal.settings.ajaxPageState){
+				for(var key in Drupal.settings.ajaxPageState[type]) {
+					postData.push({name:"ajax_page_state["+type+"]["+key+"]", value: 1});
+				}
+			}
+		});
+		//Drupal forms use non-unique ids with an id--# suffix so we must pass all of the existing elements
+		//@see misc/ajax.js : Drupal.ajax.prototype.beforeSerialize
+		var html_ids = _.reduce($('[id]'), function(ids, el){
+			ids.push(el.id);
+			return ids;
+		}, []);
+		postData.push({name:"ajax_html_ids[]", value: html_ids});
+		//TODO
+		//options.data['ajax_page_state[theme]'] = Drupal.settings.ajaxPageState.theme;
+		//options.data['ajax_page_state[theme_token]'] = Drupal.settings.ajaxPageState.theme_token;
+
+		for(var key in this.data) {
+			postData.push({name:key, value: this.data[key]});
+		}
+
+		var has_triggering_element = false;
+		for(var data in postData){
+			if(data.name === '_triggering_element_name'){
+				has_triggering_element = true;
+			}
+		}
+		if(!has_triggering_element && self.settings[this.formSubmitId] && self.settings[this.formSubmitId].submit){
+			var tEN = self.settings[this.formSubmitId].submit._triggering_element_name;
+			if(tEN){
+				postData.push({ name:"_triggering_element_name", value: tEN });
+			}
+		}
+
+		this.inProgress = true;
+		return $.ajax({
+			type: 'POST',
+			url: endpoint,
+			data: postData
+		}).always(function(){ self.inProgress = false; });
+	};
+
+	BoleroForm.prototype.get = function(endpoint){
+		return this.request(endpoint).done(_.bind(this.insert, this));
+	};
+
+	BoleroForm.prototype.rebuild = function(){
+		return this.get("/rebuild");
+	};
+
+	BoleroForm.prototype.validate = function(){
+		this.submitText();
+		return this.get("/validate");
+	};
+
+	BoleroForm.prototype.submit = function(){
+		var self = this;
+		this.submitText();
+		if(this.settings.useAjax === false){
+			var form = this.$form[0];
+			form.action = location.pathname;
+			form.submit();
+		}else if(this.settings.ajax && this.settings.ajaxSubmit){
+			//if there are ajax settings for this form then submit it
+			this.$form.ajaxSubmit({
+				success: function(response, status){
+					self.insert(response, status);
+					self.$form.removeClass("state--submitting");
+				}
+			});
+		}else{
+			//otherwise, use the bolero ajax form submit
+			return this.get("/submit").done(function(){
+				self.$form.removeClass("state--submitting");
+			});
+		}
+	};
+
+	BoleroForm.prototype.submitText = function(){
+		var self = this;
+		this.$form.addClass("state--submitting");
+		if(this.$formSubmit){
+			if(!this._submitAttached){
+				var defaultText = this.$formSubmit.val();
+				this.$form.on("submitted validated error", function(){
+					self.$form.removeClass("state--submitting");
+					self.$formSubmit.val(defaultText);
+				});
+				this._submitAttached = true;
+			}
+			this.$formSubmit.val(this.settings.submitText || "Submitting...");
+		}
+
+	};
+
+	BoleroForm.prototype.insert = function(response, status){
+		var data, settings;
+		for(var i = 0; i< response.length; i++){
+			data = response[i];
+			if(data.command === "settings"){ settings = data.settings; }
+			if(data.settings && data.settings.bolero_form === true ){
+				data.selector = this.$container;
+				//merge in the settings b/c they aren't available until the end of ajax_render
+				data.settings = $.extend(data.settings, settings);
+				//insert and Drupal.attachBehaviors
+				this.ajax.commands.insert(this.ajax, data, status);
+				this.$form = this.$container.children("form");
+				this.setupForm(settings);
+			}else if(data){
+				data.selector = data.selector || this.$form;
+				if(typeof this.ajax.commands[data.command] === "function"){
+					if(data.command === "invoke" && data.method === "trigger"){
+						// Wait for the form done callback before triggering events.
+						_.defer(function(data, ajax){
+							ajax.commands[data.command](ajax, data, status);
+						}, data, this.ajax);
+					}else{
+						this.ajax.commands[data.command](this.ajax, data, status);
+					}
+				}
+			}
+		}
+		this.initSettings(settings);
+	};
+
+	//## When we have a form
+	BoleroForm.prototype.setupForm = function(){
+		var self = this;
+		this.$formSubmit = this.$form.find(".form-submit");
+		this.formSubmitId = (this.$formSubmit.length) ? this.$formSubmit[0].id : null;
+		//override Drupal ajaxSubmit
+		this.$formSubmit.each(function(){
+			var $formSubmit = $(this),
+				ajax = Drupal.ajax[this.id];
+			$formSubmit.once("bolero-form", function(){
+				$formSubmit.on("click", function(e){
+					//If there are events bound to the form submit
+					var events = $._data(self.$form[0], "events");
+					if(events && events.submit){
+						// trigger them
+						var fe = $.Event("submit");
+						self.$form.trigger(fe);// submit.bolero.formSubmit
+						if(!fe.isPropagationStopped() && ajax){
+							// and continue or allow submit event handlers to prevent ajaxSubmit
+							ajax.eventResponse(this, e);
+						}
+					}else{
+						if(!self.settings.ajaxSubmit){
+							self.submit();
+						}else if(ajax){
+							ajax.eventResponse(this, e);
+						}
+					}
+				}).addClass("ajax-processed");
+				if(Drupal.ajax[this.id]){
+					$formSubmit.off("mousedown");
+					//delete Drupal.ajax[this.id];
+				}
+			});
+		});
+	};
+
+	BoleroForm.prototype.initSettings = function(){
+		var self = this;
+		this.settings = this.settings || {};
+		if(this.$form.length > 0){
+			this.$formSubmit.each(function(){
+				var submit_id = this.id;
+				self.settings.ajax = false;
+				self.settings.ajaxSubmit = false;
+				if(Drupal.settings.ajax && Drupal.settings.ajax[submit_id]){
+					self.settings[submit_id] = Drupal.settings.ajax[submit_id];
+					self.settings.ajax = true;
+					//by default use the Bolero form submit instead b/c it has better error handling w/ events.
+					self.settings.ajaxSubmit = self.settings.ajaxSubmit || false;
+				}
+			});
+		}
+		return this.settings;
+	};
+
+	return BoleroForm;
+});
+;
+/**
+ * @file bolero.user_login.js
+ */
+/*globals require, requirejs, define, jQuery, Drupal, IGA, aeJS */
+//# Bolero User Login
+define("bolero.user_login", ["jquery", "underscore", "IGA.events", "IGA.user", "googleanalytics"], function($, _, events, iga_user){
+    "use strict";
+	// module scope static vars
+	var $forms = $("#block-bolero-user-login-user-login-modal"),
+		$ae_reg_forms = $('form#user-login, form#user-register-form, form#ae-required-fields'),
+		dbae = Drupal.behaviors.ae_social_login,
+		dsae = Drupal.settings.ae_social_login,
+		dsbul = Drupal.settings.bolero_user_login || {},
+		ae_form_field_mapping = Drupal.settings.ae_social_login ? Drupal.settings.ae_social_login.form_field_mapping : null,
+		ae_forms = Drupal.settings.ae_social_login ? Drupal.settings.ae_social_login.forms || [] : [];
+	dsbul.isMobile = dsae && dsae.settings ? !dsae.settings.auth_window : false;
+
+    var bul = {
+	    flow: "login",
+	    $forms: $forms,
+	    isBlock: $forms.length > 0,
+	    isModal: $forms.is("[data-reveal]"),
+	    isMobile: dsbul.isMobile,
+	    opened: false, // TODO isOpened, isInitialized
+	    initialized: false,
+	    data: {},
+	    //## Initialize Bolero Modal
+	    init: function(){
+		    if(!bul.initialized){
+			    $forms.form = $forms.find(".user-login-forms .login form");
+			    // ### Attach login / register form handler
+			    if($ae_reg_forms.length > 0){
+				    $forms = $ae_reg_forms;
+			        bul.isModal = false;
+				    bul.isBlock = false;
+				    this.attach();
+				    $ae_reg_forms.each(bul.handlers.ae_register_form);
+		        }else if(bul.isBlock){
+				    //### Update the Drupal login to show the modal
+				    IGA.drupal.login = function(){
+					    //Override to use Foundation reveal modal login block if present.
+					    bul.open();
+				    };
+				    this.attach();
+				    if($forms.attr("data-default-form") === "register"){
+					    bul.handlers.register();
+				    }else{
+					    bul.handlers.login();
+				    }
+			    }
+
+			    //### Attach social handler
+			    if($forms.social){
+				    $forms.social.on("click", bul.actions.social);
+			    }
+
+			    //### Listen for AE Connect social login
+			    events.on("ae_ready", bul.attachAE).replay("ae_ready", bul.attachAE);
+
+			    this.initialized = true;
+			    //### Basic ui events
+			    $forms.on("close.fndtn.reveal", function(){
+				    bul.opened = false;
+			    });
+				if(iga_user.ae_user){
+					// Add connected service classes
+					var $html = $("html"),
+						ae_user = iga_user.ae_user;
+					for(var s in ae_user.services){
+						$html.addClass("ae-connected--"+ ae_user.services[s].Service);
+					}
+				}
+		    }
+		    return this;
+	    },
+	    open: function(reset){
+		    //TODO update bul.opened once onLogin provides sso flag
+		    if(reset !== false){ bul.data = {}; }
+		    this.updateSocials();
+		    if(!bul.isModal){
+			    if(bul.isBlock){
+				    // inline block, treat the same but no need for reveal.
+				    bul.$forms.removeClass("hidden").show();
+				    // scroll to $forms
+				    $("html,body").animate({
+					    scrollTop: bul.$forms.offset().top
+				    }, 800);
+			    }else{
+				    //window.location = "/user/" + bul.flow; return;
+			    }
+		    }else{
+			    require(["foundation.reveal"], function(){
+				    events.trigger("bolero.user_login.open");
+				    $forms.foundation('reveal', 'open');
+			    });
+		    }
+		    var has_been_opened = bul.opened;
+		    bul.opened = true;
+		    bul.actions.set_display();
+		    if(!has_been_opened){
+			    ga("send", "event", "Bolero Login", "opened", bul.flow, null, {
+				    dimension4: bul.data.display
+			    });
+		    }
+	    },
+	    updateSocials: function(){
+		    var $socialsContainer = $forms.social.first().parent(), services = [];
+		    if(typeof aeJS === "object" && aeJS.user.services){
+			    $forms.social.each(function(){
+				    var $social = $(this);
+				    services.push($social.attr("data-ae-register-form-link"));
+			    });
+
+			    _.each(aeJS.user.services.reverse(), function(s){
+				    var service = s.Service, $service;
+				    if(service === "email"){ return; }
+				    if(service === "youtube" && services.indexOf("google") >= 0){
+					    $service = $forms.social.filter("."+service);
+					    $service.detach();
+					    return;
+				    }
+				    if (services.indexOf(service) === -1 && service !== "applemusic") {
+				    	services.push(service);
+					    $service = $(bul.ae_login_link(service));
+					    $service.on("click", bul.actions.social);
+					    $socialsContainer.prepend($service);
+				    } else {
+					    $service = $forms.social.filter("."+service);
+					    if ($service.length) {
+						    $service.detach();
+						    $socialsContainer.prepend($service);
+					    }
+				    }
+			    });
+		    }
+
+		    $forms.social = $socialsContainer.children();
+		    if($socialsContainer.length > 0){
+			    var socialsCount = $forms.social.length,
+				    classes = $socialsContainer[0].className.split(/\s+/);
+			    _.each(classes, function(className){
+				    if(className.indexOf("social-link-count--") === 0){
+					    $socialsContainer.removeClass(className);
+				    }
+			    });
+			    $socialsContainer.addClass("social-link-count--"+socialsCount);
+		    }
+	    },
+	    close: function(){
+		    events.trigger("bolero.user_login.close");
+		    $forms.foundation('reveal', 'close');
+	    },
+	    //## (re)Attach DOM Elements
+	    attach: function(){
+		    var self = this;
+		    $.extend(true, $forms, {
+			    state: "state--login state--register state--password state--required-fields",
+			    header: {
+					login: $forms.find("header .login"),
+					register: $forms.find("header .register")
+			    },
+			    forms: $forms.find(".user-login-forms"),
+			    login: $forms.find(".user-login-forms .login, header"),
+			    register: $forms.find(".user-login-forms .register, header"),
+			    password: $forms.find(".user-login-forms .password"),
+			    messages: $forms.find(".messages"),
+			    social: $forms.find(".ae-social-login-links a")
+			});
+
+		    if(!bul.isModal){
+			    // use page messages
+			    $forms.messages = $(".messages");
+		    }
+
+		    //### Show user_register form
+		    $forms.find("header .register").once("bolero-emcee-login", function(){
+			   $(this).on("click", _.bind(bul.handlers.register, self));
+		    });
+
+		    //### Show user_login form
+		    $forms.find("header .login, .user-login-forms .password .user-login-link").once("bolero-emcee-login", function(){
+			   $(this).on("click", _.bind(bul.handlers.login, self));
+		    });
+
+		    if(iga_user.uid){
+			    // In the authenticated state update to "connect"
+			    $forms.header.login.find("h2").text("Connect");
+			    $forms.header.login.find("h2 + span").text(" an additional account");
+			    $forms.find("#bolero-user-login-submit").val("Connect");
+			    $forms.login.removeAttr("data-ae-type");
+			    $forms.addClass("state--connect");
+		    }
+
+		    //### Show user_password form
+		    $forms.find(".password-reset-link a").once("bolero-emcee-login", function(){
+			  $(this).on("click", _.bind(bul.handlers.password, self));
+		    });
+
+			bul.attachRegister();
+			return this;
+	    },
+	    //### Update Registration Form UI
+	    attachRegister: function(){
+		    $("form#bolero-user-register, form#user-register-form").once(function(){
+			    var $register = $(this),
+				    $email = $register.find("#edit-mail"),
+				    $username = $email.parent().siblings(".form-item").find(".username").first(),
+				    $password = $register.find(".form-item-pass-pass1"),
+				    $password_confirm = $register.find(".form-item-pass-pass2"),
+				    $password_strength = $password.find(".password-strength"),
+				    $password_confirm_msg = $password_confirm.find("div.password-confirm");
+			    //Autocomplete username based off of the email
+			    var updateUsername = _.debounce(function(){
+				    var username = $email.val().split("@")[0];
+				    $username.val(username);
+			    }, 200);
+			    $email.on("input", updateUsername);
+			    // but remove the autocomplete if the user updates their username
+			    $username.on("focus", function(){ $email.off("input", updateUsername); });
+
+			    //move the password strength & confirm check
+			    $password_strength.detach().appendTo($password);
+			    $password_confirm_msg.detach().appendTo($password_confirm);
+
+		    });
+		    return this;
+	    },
+	    //## Once AE is ready
+	    attachAE: function(aeJS){
+		    // Listen for AE user events;
+		    if(bul.isBlock){
+				aeJS.events.onLogin.addHandler(bul.handlers.required_fields);
+		        aeJS.events.onUser.addHandler(bul.handlers.required_fields);
+		    }
+
+		    function onFlow(e){
+			    if(e.step === "error"){
+				    bul.handlers.error(null, {
+					    type: "AE Connect : " + bul.flow,
+					    message: e.error,
+					    errors : { ae_user: true }
+				    }, true);
+			    }else if(e.step === "remove"){
+				    bul.flow = "login";
+				    bul.actions.login(aeJS.user, e.step);
+			    }
+		    }
+
+		    events.on("ae_flow", onFlow).replay("ae_flow", onFlow);
+		    //TODO tracktiming b/w social open & onUser / onLogin
+		},
+	    //## Attach Forms
+	    attachForm: function(bolero_form){
+		    var $form = bolero_form.$form,
+			    form_id = bolero_form.$form.attr('id');// element Id
+		    if(!$forms.form){ $forms.form = $form; }
+		    function ae_attach(aeJS){
+			    // If AE is available, submit w/ AE.
+			    if(!$form.is("[data-ae-register-form]") && ae_forms.indexOf(form_id) >= 0 || bolero_form.settings.ae_attached === false ){
+				    $form.attr("data-ae-register-form", "email");
+				    aeJS.trigger.attach($form[0]);
+				    bolero_form.settings.ae_attached = true;
+			    }
+			    if($form.is("form[data-ae-type=login]")){
+				    $form.one("user", function(){
+					    $form.removeAttr("data-ae-type");
+				    });
+			    }
+		    }
+
+		    // Attach custom submit + validate handler
+		    bolero_form.onSubmit = _.partial(bul.actions.submit, bolero_form);
+		    $form.on("submit", bolero_form.onSubmit);
+
+		    events.on("ae_ready", ae_attach).replay("ae_ready", ae_attach);
+		    if(!bolero_form.settings.attached){
+			    // One-time form initialization
+			    bolero_form.$form.on("login", bul.events.login).on("register", bul.events.register);
+			    bul.setOptOut(bolero_form);
+			    bolero_form.settings.attached = true;
+		    }
+	    },
+	    detachForm: function(bolero_form){
+		    bolero_form.$form.find("input[name=ae_user]").empty();
+		    // Remove the AE form submit and error handler
+		    bolero_form.$form.off("submit error");
+		    bolero_form.settings.ae_attached = false;
+	    },
+	    setOptOut:function(bolero_form) {
+		    var $inline_lists = $(".bolero-login-buttons--subscription-lists input"),
+		        $lists = bolero_form.$form.find(".subscription-lists input").add($inline_lists),
+		        subscribedCount = 0;
+		    if(!require.specified("EmailSubscription")){ return; }
+		    if($inline_lists.length > 0){
+			    bul.inline_optins = true;
+			    ga("set", { "dimension4": "inline" });
+		    }
+
+				require(["EmailSubscription", "IGA.webshim.storage"], function(ES) {
+					//var optins = ES.clearOptins();
+					var optins = ES.getOptins();
+					$lists.once("bul", function() {
+						var $list = $(this), self = this,
+						    listId = $list.val(),
+						    isOptedOut = ES.isOptedOut(listId),
+						    isSubscribed = ES.isSubscribed(listId);
+
+						ES.addList($list, "bolero_user_login", bolero_form.$form);
+						// The login subscription lists don't set a #default_value so we
+						// must check them client-side.
+				    if (isOptedOut || isSubscribed || dsbul.optout_default) {
+					    // If the user has opted out of the list, respect opt-out;
+					    // also uncheck if the user is already subscribed so we don't attempt to re-subscribe (b/c expensive)
+					    // or if we require an opt-in to subscribe for reasons.
+					    $list.prop("checked", false);
+				    } else {
+					    // otherwise, pre-check the checkbox
+					    $list.prop("checked", true);
+					    ES.setSubscribeDefault(listId, true);
+					    optins[listId] = 1;
+				    }
+
+				    // Removing the logic that hides lists that the user has already subscribed to.
+					  // This is unexpected, undesirable, and unnecessarialy complex;
+						// now that we have subscribe via a queue it isn't all that neccessary either.
+				    //if (isSubscribed) {
+					  //  $list.closest(".form-item").hide();
+					  //  subscribedCount++;
+				    //}
+
+						events.on("user.clear", function() {
+							// There's a new user, remove past subscription.
+							ES.clearSubscribed(listId);
+							ES.clearOptins();
+						});
+
+				    // and listen for any future opt-out / opt-in.
+				    $list.on("click", function(){
+					    bul.et_optout = true;
+					    // After the user has checked an ES optin
+					    var checked = $list.prop("checked");
+					    // update their opt-out status.
+					    if (checked === false) {
+						    ES.setOptOut(listId, true);
+					    } else if(checked === true) {
+						    ES.setOptOut(listId, false);
+					    }
+					    events.trigger("optin."+listId,[checked, this]);
+				    });
+
+						events.on("optin."+listId, function(checked, target){
+							if (target !== self){
+								$list.prop("checked", checked);
+							}
+						});
+			    });
+			    //if (subscribedCount === $lists.length) {
+				  //  $forms.form.find(".subscription-lists.form-checkboxes").closest(".form-item-lists").hide();
+				  //  $forms.form.find(".umg-disclaimer").hide();
+				  //  $(".bolero-login-buttons--subscription-lists").hide();
+			    //}
+			    ES.setOptins(optins);
+					events.trigger("bolero.emailsubscription.ready");
+		    });
+	    },
+	    ae_login_link_template: _.template('<a href="#" data-ae-register-form-link="{{service}}" class="ae-link login {{service}}" ><i class="icon icon-{{service}}"></i><span class="label"><span class="auth-action">Login</span><span class="with"> with </span><span class="social">{{Service}}</span></span></a>'),
+	    ae_login_link: function(service){
+		    return bul.ae_login_link_template({ service: service, Service: service.charAt(0).toUpperCase() + service.slice(1) });
+	    },
+	    actions: {
+		    //### Social Login / Registration
+		    social: function(e){
+			    var $social = $(this),
+				    network = $social.attr("data-ae-register-form-link");
+			    e.preventDefault();
+			    $forms.form.attr("data-ae-register-form", network);
+			    function submit(){
+				    if(bul.isMobile){
+					    ga("send", "event", "AE Connect", "opened", network, null);
+					    IGA.setConversion(IGA.conversionPt, true);
+				    }
+				    bul.actions.check_optout();
+				    aeJS.trigger.authenticate(network, dbae.auth);
+				    bul.data.provider = network;
+			    }
+			    events.on("ae_ready", submit).replay("ae_ready", submit);
+		    },
+		    //### Email Login / Registration
+		    submit: function(bolero_form, e){
+			    e.preventDefault();
+			    e.stopImmediatePropagation();
+			    var $form = bolero_form.$form, form = $form[0];
+			    bul.data.provider = "email";
+			    function removeSubmit(){
+				    // If no errors submitting to AE remove AE submit
+				    bolero_form.$form.off("submit", bolero_form.onSubmit);
+				    // defer removing this listener otherwise it breaks loop
+				    _.defer(function(){ aeJS.events.onUser.removeHandler(removeSubmit); });
+			    }
+			    if($form.is("form[data-ae-register-form]")){
+				    aeJS.events.onUser.addHandler(removeSubmit);
+				    $form.once("bul-form-submit", function(){
+					    bolero_form.$form.on("validated", function(){
+						    //#### Once Validated
+						    removeSubmit();
+						    if(bul.flow === "login"){
+							    // Map user login name / email field to username / email
+							    var $name = $form.find('input[name="name"]'),
+								    name = $name.val();
+							    if(name.indexOf("@") > 0){
+								    // name is an email
+								    var username = name.split('@')[0];
+								    ae_form_field_mapping[bolero_form.form_id + ".name"] = "email";
+								    // set a default username
+							    }else{
+								    //form name is an username
+								    ae_form_field_mapping[bolero_form.form_id + ".name"] = "username";
+							    }
+						    }
+						    dbae.map_ae_fields($form);
+						    bul.actions.check_optout();
+						    // submit the form to AE login / register.
+						    aeJS.trigger.submit(form);
+						    bul.ae_login_start = Date.now();
+					    });
+				    });
+				    bolero_form.validate();
+			    }else{
+				    // Otherwise, just submit.
+				    bolero_form.submit();
+			    }
+		    },
+		    //## AE Login / Register Form Submit
+		    login: function(ae_user, type, options){
+			    options = options || {};
+			    if(options.remoteOnly){
+				    events.trigger("bolero.remote_login", [ae_user, type, options]);
+				    if(bul.opened){ bul.close(); }
+				    return;
+			    }
+			    //This should be the local flow rather than if this is a login / register in ae
+			    bul.handlers[bul.flow](null, false);
+			    // add the ae_user data to the form hidden input
+			    var $ae_user = $forms.form.find("input[name=ae_user]");
+			    $ae_user.val(JSON.stringify(ae_user));
+			    dbae.remove_ae_field_mappings($forms.form);
+			    // and submit via AJAX.
+			    require(["bolero.form"], function(BoleroForm){
+				    var bolero_form = new BoleroForm($forms.form);
+				    $forms.form[0].action = (bolero_form.formSubmitId) ? Drupal.settings.ajax[bolero_form.formSubmitId].url  : "/system/ajax";
+				    bolero_form.data.campaign = IGA.conversionPt;
+				    bul.actions.set_display();
+				    bolero_form.data.display = bul.data.display;
+				    bolero_form.data.nid = bul.data.nid;
+				    bolero_form.submit();
+			    });
+
+			    bul.handlers.prevent = false;
+		    },
+		    set_display: function(){
+			    if(bul.opened){
+				    if(bul.opened_required_fields){
+					    bul.data.display = "modal required_fields";
+				    }else if(bul.opened_et){
+					    bul.data.display = "modal opt-in";
+				    }else{
+					    bul.data.display = "modal";
+				    }
+			    }else{
+				    bul.data.display = "inline";
+			    }
+		    },
+		    clear_subscriptions: function(){
+			    require(["EmailSubscription"], function(ES) {
+			    	ES.clearOptins();
+			    });
+			    $forms.find(".subscription-lists input").add(".bolero-login-buttons--subscription-lists input").each(function(){
+				    $(this).prop( "checked", false );
+			    });
+		    },
+		    check_optout: function() {
+			    if (bul.isMobile && UMG.country != 'US') {
+				    // If country is not US then we cannot subscribe by default.
+				    events.trigger("optout.default", ["nonUS"]);
+			    }
+		    },
+		    casl: function(reason, broadcast){
+			    //if(dsbul.optout_default){ return; }
+			    dsbul.optout_default = true;
+			    if(reason === "casl"){
+				    dsbul.casl = true;
+				    bul.$forms.find("div.umg-disclaimer").add(".bolero-login-buttons--subscription-lists .umg-disclaimer").append(bul.casl_message);
+			    }
+			    bul.actions.clear_subscriptions();
+			    events.off("optout.default", bul.actions.optout_default);
+			    if(reason && broadcast){ events.trigger("optout.default", [reason]); }
+		    }
+	    },
+	    events: {
+		    //## Login event callback
+		    login: function(e, result){
+			    var options = {},
+				    user = result.user,
+				    alreadyLoggedIn = iga_user.uid ? true : false;
+			    if(typeof aeJS !== "undefined"){ options.ae_user = aeJS.user; }
+			    if(alreadyLoggedIn){
+				    bul.events.updated(user);
+			    }
+			    if(bul.data.nid){ options.nid = bul.data.nid; }
+			    if(bul.data.title){ options.title = bul.data.title; }
+			    if(bul.data.provider){ options.provider = bul.data.provider; }
+			    if(bul.data.display){ options.display = bul.data.display; }
+			    options.flow = bul.flow;
+			    ga("send", "event", "Bolero Login", bul.flow, bul.data.provider, null);
+			    events.trigger("login", [user, options]);
+			    if(!alreadyLoggedIn){
+				    $forms.form.addClass("state--loading");
+				    var redirect_url = bul.data ? bul.data.redirect_url : null;
+				    if(!redirect_url){
+					    var url = IGA.utils.parseUrl(location.href);
+					    if(url.params['?'].destination){
+						   redirect_url = url.params['?'].destination;
+						    if(redirect_url.charAt(0) !== "/"){ redirect_url = "/"+redirect_url; }
+					    }
+				    }
+				    if(IGA.location.preventReload.reload === true){
+					    bul.close();
+					    $(document).trigger("messages");
+				    }else{
+					    IGA.location.reload(redirect_url);
+				    }
+				    bul.data = {};
+			    }else{
+				    bul.handlers.prevent = false;
+				    bul.handlers.login();
+			    }
+		    },
+		    updated: function(user){
+			    bul.close();
+			    var action = "connected", connected_service;
+			    if(iga_user.ae_user && user.ae_user){
+				    if(user.ae_user.services.length === iga_user.ae_user.services.length){
+					    // No new services have been added.
+					    action = "updated";
+				    }else{
+					    // Otherwise, find the new service.
+					    var service, orig_service;
+					    for(var s in user.ae_user.services){
+						    service = user.ae_user.services[s];
+						    connected_service = false;
+						    for(var o in iga_user.ae_user.services){
+							    if(service.ID === iga_user.ae_user.services[o].ID){
+								    connected_service = true;
+								    break;
+							    }
+						    }
+						    if(connected_service === false){
+							    connected_service = service;
+						    }
+					    }
+				    }
+			    }
+			    if(typeof connected_service === "object"){
+				    events.trigger(action, [connected_service.Service, connected_service, user]);
+				    require(["bolero.snackbar"], function(Snackbar){
+					    if(action === "connected"){
+						    $("html").addClass("ae-connected--"+connected_service.Service);
+						    Snackbar.add('<i class="icon icon-'+connected_service.Service+'"</i>Now connected as '+ connected_service.Username + '.', true, null, { type: "success"});
+					    }else{
+						    Snackbar.add("Success! Your account has been "+action+".", true, null, { type: "success"});
+					    }
+				    });
+			    }
+		    },
+		    remote_login: function(user){
+			    // TODO it'd be nice if we could figure out new vs. connected vs. already connected.
+		    },
+		    //## Register event callback
+		    register: function(e, user){
+			    var options = {};
+			    if(typeof aeJS !== "undefined"){ options.ae_user = aeJS.user; }
+			    events.trigger("register", [user, options]);
+			    bul.events.login(e, user);
+		    }
+	    },
+	    handlers: {
+		    prevent: false,
+		    login: function(e, attach, error){
+			    if(bul.handlers.prevent){ return false; }
+			    if(e){ e.preventDefault(); }
+			    bul.flow = "login";
+			    $forms.removeClass($forms.state).addClass("state--login");
+			    $forms.header.login.addClass("active");
+			    $forms.header.register.removeClass("active");
+			    var formSelector = "form#bolero-user-login, form.bolero-user-login, form.user-login, form#user-login",
+				    authAction = iga_user.uid ? "Connect" : "Login";
+			    $forms.form = $forms.find(formSelector).andSelf().filter(formSelector);
+			    $forms.social.find(".auth-action").text(authAction);
+			    //On state change, hide the previous messages
+			    if(!error){ $forms.messages.hide(); }
+			    require(["bolero.form"], function(BoleroForm){
+				    var submitText = (iga_user.uid) ? "Connecting..." : "Logging In...",
+					    bolero_form = new BoleroForm($forms.form, null, null, { submitText: submitText });
+				    attach = attach || !bolero_form.settings.attached;
+				    if(attach !== false){
+					    bul.handlers.form($forms.form);
+					    // If using AE connect validate using bolero_form and submit to AE before submitting locally.
+					    bul.attachForm(bolero_form);
+					    events.trigger("bolero.login.ready");
+				    }
+			    });
+		    },
+		    register: function(e, attach, error) {
+			    if(bul.handlers.prevent){ return false; }
+			    if(e){ e.preventDefault(); }
+			    bul.flow = "register";
+			    require(["bolero.form"], function(BoleroForm) {
+				    var $container = $forms.register.filter(".register.bolero-ajax-form-wrapper"),
+					    data = {
+				    	  et_lists: dsbul.et_lists ? dsbul.et_lists.join(",") : '',
+						    dm_lists: dsbul.dm_lists ? dsbul.dm_lists.join(",") : ''
+				      },
+					    bolero_form = new BoleroForm($container, null, data, { submitText: "Creating Account..." });
+						bolero_form.load().done(function(response){
+					    if(response !== false){
+					        // Because the form was loaded via ajax we should re-attach it
+					        bul.attach();
+					    }else{
+						    attach = attach || !bolero_form.settings.attached;
+					    }
+					    $forms.removeClass($forms.state).addClass("state--register");
+					    $forms.header.register.addClass("active");
+					    $forms.header.login.removeClass("active");
+							var formSelector = "form#bolero-user-register, form.bolero-user-register, form#user-register-form, form.user-register-form";
+							$forms.form = $forms.find(formSelector).andSelf().filter(formSelector);
+							$forms.social.find(".auth-action").text("Register");
+
+							if(!error){ $forms.messages.hide(); }
+							if (attach !== false) {
+								bul.handlers.form(bolero_form.$form);
+								// If using AE connect validate using bolero_form and submit to AE before submitting locally.
+								bul.attachForm(bolero_form);
+								ga("send", "event", "Bolero Login", "opened", "register", null);
+								$forms.form.on("grecaptcha.reset", function(){ if(window.grecaptcha){ grecaptcha.reset(); } });
+
+								var $recaptcha = bolero_form.$form.find(".captcha .g-recaptcha");
+								if($recaptcha.is(":empty")){
+									var recaptcha_params = {
+										sitekey: $recaptcha.attr("data-sitekey"),
+										theme: $recaptcha.attr("data-theme"),
+										type: $recaptcha.attr("data-type")
+									};
+									if(window.grecaptcha){ grecaptcha.render($recaptcha[0], recaptcha_params); }
+								}
+							}
+				    });
+			    });
+		    },
+		    ae_register_form: function(){
+			    var $ae_reg_form = $(this),
+				    formId = this.id;
+			    require(["bolero.form"], function(BoleroForm){
+				    var bolero_form = new BoleroForm($ae_reg_form, null, null, { useAjax:false, ajaxSubmit:false });
+				    function attach_register_form(){
+					    function ae_submit(ae_user, type, sso) {
+						    if(type === "init" || sso === true){ return; }//|| sso === true
+						    var $ae_user = bolero_form.$form.find("input[name=ae_user]");
+						    $ae_user.val(JSON.stringify(ae_user));
+						    dbae.remove_ae_field_mappings(bolero_form.$form);
+						    bolero_form.submit();
+					    }
+					    events.on("ae_login", ae_submit).replay("ae_login", ae_submit);
+					    events.on("ae_user", ae_submit).replay("ae_user", ae_submit);
+					    bolero_form.$formSubmit.on("click", function(){
+						    $forms.form = bolero_form.$form;
+						    bul.flow = (formId.indexOf("register") >= 0) ? "register" : "login";
+					    });
+				    }
+				    bul.handlers.form(bolero_form.$form);
+				    if(formId !== "ae-required-fields"){
+					    bul.attachForm(bolero_form);
+					    events.on("ae_ready", attach_register_form).replay("ae_ready", attach_register_form);
+				    }else{
+					    $forms.form = bolero_form.$form;
+				    }
+			    });
+		    },
+		    password: function(e, error){
+			    if(bul.handlers.prevent){ return false; }
+			    if(e){ e.preventDefault(); }
+			    require(["bolero.form"], function(BoleroForm){
+				    var $container = $forms.password.filter(".password").find(".bolero-ajax-form-wrapper"),
+					    bolero_form = new BoleroForm($container, null, null, { submitText: "Sending Email..." });
+				    bolero_form.load().done(function(response){
+					    if(response !== false){
+					        // Because the form was loaded via ajax we should re-attach it
+					        bul.attach();
+						    ga("send", "event", "Bolero Login", "opened", "password", null);
+					    }
+					    $forms.removeClass($forms.state).addClass("state--password");
+					    if(!error){ $forms.messages.hide(); }
+					    $forms.form = bolero_form.$form;
+					    if(this.xhr){
+						    bul.handlers.form($forms.form);
+					    }
+				    });
+			    });
+		    },
+		    required_fields: function(user, type, sso){
+			    if(type === "init" || sso === true || !bul.isBlock){ return; }
+			    /*if(dbae.remoteOnly){
+				    if(bul.opened){ bul.close(); }
+				    return bul.events.remote_login(user);
+			    }*/
+			    var $container = $forms.required_fields || $('<div class="required-fields ae-form" style="display:none"></div>'),
+				    options = { remoteOnly: dbae.remoteOnly };
+			    if(!$forms.required_fields){
+				    $forms.forms.append($container);
+				    $forms.required_fields = $container;
+			    }
+			    require(["bolero.form", "EmailSubscription"], function(BoleroForm, ES){
+				    var bolero_form = new BoleroForm($container, 'ae_required_fields', {ae_user: JSON.stringify(user) });
+				    bolero_form.load().done(function(response) {
+					    if(response === false){
+						    // The form has already been loaded, no ajax request needed.
+						    if(!bul.required_fields_complete && !bul.opened){
+							    // If the user hasn't satisfied all required fields ask them again;
+							    bul.handlers.show($container, 'required-fields');
+							    bul.open(false);
+						    }else{
+							    // otherwise, continue with login / update.
+							    if(!bul.opened && !bul.inline_optins){
+								    bul.actions.clear_subscriptions();
+							    }
+							    bul.actions.login(user, type, options);
+						    }
+						    return;
+					    }
+
+					    var $form = bolero_form.$form,
+						    $required_fields = $form.find('input[name=required_fields]'),
+						    has_required_fields = $required_fields.val() !== "",
+						    required_fields_subscriptions = dsbul.required_fields_subscriptions,
+						    country = user.data.CountryCode;
+
+							bul.required_fields_complete = false;
+					    if(!country && user.data.GeoCountry){ country = user.data.GeoCountry; }
+					    if(dsbul.casl || country === "CA" || user.data.Country === "Canada"){
+						    bul.actions.casl("casl", true);
+					    }else if(dsbul.optout_default || country !== "US" || user.data.Country !== "United States"){
+						    bul.actions.casl("nonUS", true);
+					    }
+					    if (country) {
+						    events.trigger("country.detect", [country]);
+					    } else {
+					    	country = UMG.country;
+					    }
+					    required_fields_subscriptions = bul.handlers.required_fields_subscription_lists($form, country, ES);
+
+					    //If the required fields screen is triggered, open the modal.
+					    if(!has_required_fields){
+						    // If already logged in then we're all set.
+						    dbae.updateForm($forms.form);
+						    if (required_fields_subscriptions > 0) {
+							    $form.find("#ae-required-fields-submit").val("Continue");
+							    if(dsbul.required_fields_subscribe_cta){
+								    $form.find("header > h3").text(dsbul.required_fields_email_cta);
+								    $form.find("header > .description").hide();
+							    }
+							    $form.on("submit", function(e){
+								    e.preventDefault();
+								    e.stopImmediatePropagation();
+								    $form.addClass("state--loading");
+								    bul.required_fields_complete = true;
+								    bul.actions.login(user, type, options);
+							    });
+							    if(!bul.opened){ bul.opened_et = true; }
+							    bul.handlers.show($container, 'required-fields');
+							    ga("send", "event", "Bolero Login", "opened", "required_fields", null);
+						    } else {
+							    if(!bul.opened && !bul.inline_optins){
+								    // Uncheck ES mailing lists if the user hasn't seen the login form yet
+								    // so that we don't blindly subscribe them.
+								    bul.actions.clear_subscriptions();
+							    }
+							    bul.required_fields_complete = true;
+							    bul.actions.login(user, type, options);
+							    ga("send", "event", "Bolero Login", "skip", "required_fields", null);
+						    }
+						    return;
+					    }
+					    // ### If there are some required fields left
+					    events.trigger("bolero.required_fields", [user, type, sso]);
+
+					    // Show the form
+					    if(!bul.opened){
+						    bul.opened_required_fields = true;
+						    bul.open(false);
+					    }
+					    bolero_form.$container.show();
+					    bul.handlers.form($form);
+					    bul.handlers.show($container, 'required-fields');
+					    //##### Validate the form
+					    function validate(e){
+						    bolero_form.validate();
+						    return false;
+					    }
+					    function ae_continue(user, state){
+						    // use the updated user from AE
+						    aeJS.events.onUser.removeHandler(ae_continue);
+						    aeJS.events.onLogin.addHandler(bul.handlers.required_fields);
+						    aeJS.events.onUser.addHandler(bul.handlers.required_fields);
+						    bul.handlers.prevent = false;
+						    bolero_form.$container.hide();
+						    //update the form fields with AE user data
+						    dbae.updateForm($forms.form);
+						    bul.handlers[bul.flow](null, false);
+						    bolero_form.delete();
+						    bul.handlers.prevent = true;
+						    bul.actions.login(user, type, options);
+					    }
+					    $form.on("submit", validate);
+					    // Once the form has been validated server-side, submit to AE
+					    bolero_form.$form.on("validated", function(){
+						    $form.off("submit", validate);
+						    $form.attr("data-ae-register-form", $forms.form.attr("data-ae-register-form"));
+						    dbae.map_ae_fields($form);
+						    aeJS.trigger.attach($form[0]);
+						    // and continue with login/registration.
+						    aeJS.events.onLogin.removeHandler(bul.handlers.required_fields);
+						    aeJS.events.onUser.removeHandler(bul.handlers.required_fields);
+						    aeJS.events.onUser.addHandler(ae_continue);
+						    aeJS.trigger.submit($form[0]);
+					    });
+					    ga("send", "event", "Bolero Login", "opened", "required_fields", null);
+				    });
+			    });
+		    },
+		    required_fields_subscription_lists: function($form, country, ES){
+		    	// TODO update selectors
+			    // TODO update localStorage & cookies
+			    var subscriptionCount = 0,
+				    level = dsbul.required_fields_subscriptions; // TODO rename to required_fields_subscriptions
+			    // ### Copy the ES required fields as part of the required_fields form
+			    var $lists = $forms.form.find(".subscription-lists.form-checkboxes").closest(".form-item-lists").clone(),
+				    $list_items = $lists.find("input"),
+				    $disclaimer = $forms.form.find(".umg-disclaimer").clone();
+
+			    $list_items.each(function(){
+				    var $list = $(this),
+					    $form_list = $forms.form.find('input.subscription-lists[name="'+$list.attr("name")+'"]'),
+					    listId = $list.val(),
+					    isChecked = $list.is(":checked"),
+					    isOptedOut = ES.isOptedOut(listId),
+					    isSubscribed = ES.isSubscribed(listId);
+				    $list.removeAttr("id");
+				    if(isChecked && (bul.opened || bul.inline_optins) || isSubscribed || isOptedOut && level !== 3){
+					    // We can skip the required fields screen if the user has subscribed or opted out of lists.
+					    subscriptionCount++;
+				    }
+				    if(level === 3 && !isSubscribed && !bul.et_optout && !dsbul.optout_default){
+					    $list.prop("checked", true);
+					    $form_list.prop("checked", true);
+				    }
+				    $list.on("click", function(){ $form_list.click();});
+				    $list.siblings("label").on("click", function(){
+					    // Cloned labels retain original for="id", just need to update checked status.
+					    setTimeout(function(){ $list.prop("checked", $form_list.prop("checked")); }, 0);
+				    });
+			    });
+			    if(dsbul.optout_default && country != "US" && dsbul.required_fields_casl && level < 1){
+				    // For detected non-US countries we require opt-in and should prompt for mailinglists again.
+				    level = 1;
+			    }
+			    if( bul.et_optout || level === 1  && subscriptionCount > 0 ||
+				    level >= 2 && subscriptionCount === $list_items.length ){
+				    dsbul.required_fields_subscriptions = level = 0;
+			    }
+			    $form.find(".form-actions").before($lists).before($disclaimer);
+			    return level;
+		    },
+		    error: function(e, error, fatal){
+			    if(error){
+				    // force error.message to be interpreted as html
+				    var $error = $($.parseHTML(error.message)),
+					    error_message = error.message;
+
+				    if($error.is("#messages")){ error_message = $error.children(".messages").html(); }
+				    if($error.is(".messages")){ error_message = $error.html(); }
+				    error_message = bul.handlers.custom_errors(error_message);
+
+				    $forms.messages = $forms.find("#messages, .messages");
+				    $forms.messages.empty().addClass("messages error messages--error").first().siblings("#messages, .messages").remove();
+				    $forms.messages.html(error_message).show();
+
+				    if(bul.isBlock){
+					    // update links to trigger screen handlers
+					    $forms.messages.find("a").each(function(){
+						    var $link = $(this),
+							    href = $link[0].href;
+						    if(href.indexOf("/user/login", href.length - 11) !== -1){
+							    $link.on("click", bul.handlers.login);
+						    }else if(href.indexOf("/user/register", href.length - 14) !== -1){
+							    $link.on("click", bul.handlers.register);
+						    }else if(href.indexOf("/user/password", href.length - 14) !== -1){
+							    $link.on("click", bul.handlers.password);
+						    }
+					    });
+				    }
+
+				    if(error.errors && (error.errors.ae_user) && $forms.form && $forms.form.get(0).id !== "ae-required-fields"){
+				    // or form is validated
+					    // If ae_user error then logout of AE so another attempt can be made.
+					    aeJS.trigger.logout();
+					    if(bul.isBlock){
+						    aeJS.events.onLogin.addHandler(bul.handlers.required_fields);
+						    aeJS.events.onUser.addHandler(bul.handlers.required_fields);
+					    }
+					    // re-attach Bolero form
+					    require(["bolero.form"], function(BoleroForm){
+						    var bolero_form = new BoleroForm($forms.form);
+						    // Detach & re-attach form.
+						    bul.detachForm(bolero_form);
+						    bul.handlers[bul.flow](null, true, true);
+						    $forms.messages.show();
+					    });
+				    }
+					// Make sure the modal is displayed if needed.
+				    if(!bul.opened){ bul.open(false); }
+
+				    $error.children(".element-invisible").remove();
+				    var error_text = $error.text();
+				    if(typeof fatal !== "undefined"){
+					    ga("send", "exception", {
+						    appName: error.type || "Bolero Login",
+						    exDescription:  error_text,
+						    exFatal: fatal
+					    });
+				    }else{
+					    ga("send", "event", error.errors.ae_user ? "AE Connect" : "Bolero Login", "error", error_text, null, {nonInteraction: 1});
+				    }
+			    }else{
+				    $forms.messages.text("Unable to login, an error has occurred.").show();
+			    }
+		    },
+		    custom_errors: function(message){
+			    message = message.toLowerCase().replace(/\+/g, " ");
+				switch(message){
+					case "email account already exists with a different password":
+						return 'An account with this e-mail address already exists with a different password. <a href="/user/password">Reset&nbsp;Your&nbsp;Password</a>';
+					case "no account exists with those credentials.":
+						return 'No account exists with that e-mail / password. <a href="/user/register">Create&nbsp;an&nbsp;Account</a> or <a href="/user/password">Reset&nbsp;Your&nbsp;Password</a>';
+			  }
+			  return message;
+		    },
+		    form: function($form){
+			    $form.on("error", bul.handlers.error);
+			    if( require.specified("IGA.common.webform") && Modernizr && Modernizr.inputtypes.date){
+				    require(["IGA.common.webform"], function(Webform){
+					    $form.find(".form-item-birthdate.form-type-date-text input").attr({
+						    type: "date",
+						    autocomplete: "bday",
+						    placeholder: "mm/dd/yyyy",
+						    required: null
+					    });
+					    $form.find(".form-type-date, .form-type-date-select, .form-type-date-text").each(Webform.dateInput);
+				    });
+			    }
+				// CASL zipcode detection
+			    var casl_match = _.debounce(function(){
+				    var $zip = $(this), zip = $zip.val().toUpperCase();
+				    if(zip.match(bul.casl_regex)){
+					    bul.actions.casl("casl", true);
+					    $zip.off("change", casl_match);
+				    }
+			    });
+			    $form.find("input[name=zipcode]").on("change", casl_match);
+		    },
+		    show: function($form, state){
+			    $forms.removeClass($forms.state).addClass("state--"+state);
+			    $form.show();
+			    bul.handlers.prevent = true;
+			    $forms.messages.hide();
+			    if(!bul.opened){ bul.open(); }
+		    }
+	    },
+	    casl_regex: new RegExp(/[ABCEGHJKLMNPRSTVXY][0-9][ABCEGHJKLMNPRSTVWXYZ]\s?[0-9][ABCEGHJKLMNPRSTVWXYZ][0-9]/),
+	    casl_message: '<p class="casl-message" ><br>** Emails will be sent by or on behalf of UMG Recordings Services, Inc. 2220 Colorado Avenue, Santa Monica , CA 90404 (310) 865-4000. You may withdraw your consent at any time. See Privacy Policy at <a href="http://privacypolicy.umusic.com">http://privacypolicy.umusic.com</a>.</p>'
+    };
+
+	function mobile_detect(){ dsbul.isMobile = bul.isMobile = true; }
+	events.on("ae_mobile_detect", mobile_detect).replay("ae_mobile_detect", mobile_detect);
+
+    return bul;
+});
+
+// # Drupal Behaviors
+(function($){
+	"use strict";
+	var $block = $("#block-bolero-user-login-user-login-modal"),
+		dbae = Drupal.behaviors.ae_social_login,
+		dsae = Drupal.settings.ae_social_login || { settings:{} },
+		dsbul = Drupal.settings.bolero_user_login || {},
+		dbbul = Drupal.behaviors.bolero_user_login = {
+		login_selectors: "a.user-login.bolero-modal, a[href*='user/login'], a.user-login-link",
+		ae_login_selectors: "a.ae-register-link[data-ae-register-link], a.ae-register-link[data-ae-login-link], a.ae-register-link[data-ae-auth-link]",
+		// TODO figure out how to remove this...
+		stopPropagation_selectors: "body.not-logged-in form.node-post-form .form-actions .form-submit",
+		modal_selectors: function(){ return [dbbul.login_selectors, dbbul.stopPropagation_selectors].join(", "); },
+		all_selectors: function(){ return [dbbul.login_selectors, dbbul.stopPropagation_selectors, dbbul.ae_login_selectors].join(", "); },
+		// ## Attach Behavior
+		attach:function(context, settings){
+			if(context !== document){ dbbul.attachLinks(context); }
+
+			$(dbbul.all_selectors(), context).once("bul-attach", function(){
+				var $link = $(this),
+					$node = $link.closest(".node[data-nid], .bolero-clearing-content, .clearing-caption"),
+					isInline = $node.is(".node:not(.node--full), .bolero-clearing-content, .clearing-caption"),
+					nid = $node.attr("data-nid"),
+					title = $node.attr("data-title"),
+					url = $node.attr("data-alias"),
+					isMobile = dsae && dsae.settings? !dsae.settings.auth_window : false;
+				// Update Login / Connect text
+				require(["IGA.user"], function(user){
+					if(user.uid){
+						$link.addClass("state--connect");
+						$link.find(".auth-action").text("Connect");
+					}
+				});
+
+				//### Track login source node
+				require(["bolero.user_login", "underscore", "IGA.events"], function(bul, _, events){
+					isMobile = dsbul.isMobile;
+					events.on("ae_mobile_detect", function(){ isMobile = true; });
+					// TODO will this get fired with stopImmediatePropagation
+					// TODO potential issue with ae_ready after attachLinks
+					var provider;
+					if($link.is(dbbul.ae_login_selectors)){
+						provider = $link.attr("data-ae-register-link");
+					}
+					$link.on("click mousedown", function(){
+						_.defer(function(){
+							if(nid){ bul.data.nid = nid; }
+							if(title){ bul.data.title = title; }
+							if(provider){ bul.data.provider = provider; }
+							if(url && isInline){
+								bul.data.redirect_url = url;
+								// For mobile, tell AE to redirect to the specified url.
+								if(isMobile && aeJS){
+									aeJS.settings.return_url = url;
+									events.once("bolero.user_login.close", function(){
+										dsbul.clear_return_url();
+										events.off("ae_window", dsbul.clear_return_url);
+									}).once("ae_window", function(state){
+										if(state.state === "closed"){
+											dsbul.clear_return_url();
+											events.off("bolero.user_login.close", dsbul.clear_return_url);
+										}
+									});
+								}
+							}
+						});
+					});
+				});
+			});
+		},
+		clear_return_url: function(){ aeJS.settings.return_url = ""; },
+		// ## Attach to login links
+		attachLinks: function(context){
+			// ### Attach Regular modal open links
+			$(dbbul.login_selectors, context).once("bul", function(){
+				var $link = $(this);
+				$link.on("click", function(e){
+					var cp = $link.attr("data-campaign");
+					cp = cp ? cp : "user login";
+					IGA.setConversion(cp);
+					e.preventDefault();
+					IGA.drupal.login();
+				});
+			});
+
+			if(context === document && dbae){
+				require(["IGA.events"], function(events){
+					events.on("ae_user_cancelled", dbae.clearTriggeringElement);
+				});
+			}
+
+			function openEmailSubscriptionModal($this, cp){
+				var $lists = $this.closest(".bolero--login-buttons").siblings(".bolero-login-buttons--subscription-lists");
+				require(["EmailSubscription"], function(ES){
+					// If opted out or closed then don't open the modal
+					if(!ES.isSubscribedToLists($lists)){
+						ES.modal.open(null, { campaign: cp });
+					}
+				});
+			}
+
+			// ### Attach to AE login links
+			$(dbbul.ae_login_selectors, context).once("bul",function(){
+				var $link = $(this), link = this, cp = $link.attr("data-campaign");
+
+				$link.on("ae_login", function(e, $el, ae_user, type, sso){
+					var remoteOnly = dbae.remoteOnly;
+					require(["IGA.events"], function(events){
+						function boleroLoginComplete(){
+							events.trigger("element_ae_login",  [$el, ae_user, type, sso]);
+							// ## Show Email opt-in modal after remote-only login.
+							if($link.is("a[data-remote-only][data-subscription-list-optin]")){
+								openEmailSubscriptionModal($link, cp);
+							}
+						}
+						if(remoteOnly){
+							events.once("bolero.remote_login", boleroLoginComplete).replay("bolero.remote_login", boleroLoginComplete);
+						}else{
+							boleroLoginComplete();
+						}
+					});
+				});
+
+				function ae_attach_link(){
+					// Initialize the AE JS on this link if not initially on the page.
+					if(context !== document){ aeJS.trigger.attach(link); }
+					$link.on("click", function(){
+						if(!$link.is("a[data-remote-only]")){
+							cp = cp ? cp : "ae-register-link";
+							IGA.setConversion(cp, true);
+						}else{
+							dbae.setRemoteOnly();
+						}
+						dbae.setTriggeringElement($link);
+					});
+					// move our click handler before the AE click handler.
+					var _events = $._data($link[0], "events");
+					_events.click.unshift(_events.click.pop());
+				}
+
+				require(["IGA.events"], function(events){
+					events.on("ae_ready", ae_attach_link).replay("ae_ready", ae_attach_link);
+				});
+			});
+		}
+	};
+
+	// Initialize links before $.ready
+	dbbul.attachLinks(document);
+
+	// # Initialize
+	require(["jquery", "bolero.user_login", "IGA.events", "IGA.user", "googleanalytics"], function($, bul, events, user){
+		function last_login_service(user){
+			var service = null;
+			for(var s in user.services){
+				if(!service || user.services[s].LastLogin > service.LastLogin){
+					service = user.services[s];
+				}
+			}
+			return service;
+		}
+
+		// ## AE Login Analytics
+		function ae_ready(){
+			aeJS.events.onWindow.addHandler(function(state){
+				if(state.state === "opened"){
+					bul.data = {};
+					ga("send", "event", "AE Connect", "opened", state.service, null);
+				}else if(state.state === "closed"){
+					var is_user_cancelled = !aeJS.user.services;
+					if(!is_user_cancelled){
+						var connected = false;
+						for(var s in aeJS.user.services){
+							var service = aeJS.user.services[s];
+							if(service.Service.toLowerCase() === state.service){
+								connected = true;
+								break;
+							}
+						}
+						if(!connected){ is_user_cancelled = true; }
+					}
+					if(is_user_cancelled){
+						// If the window is closed and the user isn't connected, consider it an permission refusal.
+						ga("send", "event", "AE Connect", "user_cancelled", state.service, null, { nonInteraction: false });
+						events.trigger("ae_user_cancelled", [aeJS.user]);
+					}
+				}
+			});
+			aeJS.events.onFlow.addHandler(function(state){
+				var action = state.step, label = null, ni = true;
+				if(state.step === "error"){
+					if(state.error.indexOf("denied" > 0)){
+						action = "user_denied"; ni = false;
+					}else{
+						action = "error."+state.error;
+					}
+				}else if(state.step === "authenticate"){
+					bul.ae_login_start = Date.now();//TODO mobile timing through redirect?
+				}
+				if(state.service){ label = state.service; }
+				ga("send", "event", "AE Connect", action, label, null, { nonInteraction: ni });
+			});
+			aeJS.events.onLogout.addHandler(function(){
+				ga("send", "event", "AE Connect", "logout", null, null);
+			});
+
+			function ae_login(user, type, sso){
+				var service = last_login_service(user),
+					provider = service ? service.Service : null;
+				if(sso){
+					//bul.setOptOut({ $form: $("form#bolero-user-login") });
+					ga("send", "event", "AE Connect", "sso", provider, null, { nonInteraction: true });
+				}else{
+					// login | register
+					//TODO conversionPt as dimension5 / campaign
+					ga("send", "event", "AE Connect", type, provider, null);
+					if(bul.ae_login_start){
+						ga('send', 'timing', 'Appreciation Engine', 'ae_login_'+service, Date.now() - bul.ae_login_start, 'AE');
+					}
+				}
+				// Check if there is an element tracked as the source of this link.
+				if(dbae){
+					var $el = dbae.getTriggeringElement();
+					if($el && $el.is(dbbul.ae_login_selectors)){ $el.trigger("login", [ $el, user, type, sso ]); }
+				}
+			}
+			function ae_user(user, state){
+				if(state === 'init' && IGA.user.uid && dsae.redirect_login){
+					var service = last_login_service(user),
+						provider = service ? service.Service : null,
+						country = user.data.CountryCode;
+					if(dsae.redirect_required_fields){
+						var label = (dsae.redirect_required_fields === 'valid') ? 'skip' : 'opened';
+						ga("send", "event", "AE Connect", "required_fields", label, null);
+					}
+					//TODO We can't determine login vs. registration
+					ga("send", "event", "AE Connect", "login", provider, null);
+					if(!country && user.data.GeoCountry){ country = user.data.GeoCountry; }
+					if(country){ events.trigger("country.detect", [country]); }
+
+					events.trigger("login", [IGA.user, { ae_user: user, provider: provider, redirect: true }]);
+				}
+			}
+
+			events.on("ae_login", ae_login).replay("ae_login", ae_login);
+			events.on("ae_user", ae_user).replay("ae_user", ae_user);
+		}
+		events.on("ae_ready", ae_ready).replay("ae_ready", ae_ready);
+		bul.init();
+
+		events.on("optout.default", bul.actions.casl).replay("optout.default", bul.actions.casl);
+	});
+
+	if($block.length){
+		// If the user clicks login before initialization re-trigger when ready.
+		IGA.drupal.login = function(){
+			require(["bolero.user_login"], function(BoleroLogin){
+				BoleroLogin.init().open();
+			});
+		};
+	}
+})(jQuery);
+;
+/**
+ * @file Code to initialize a slick carousel on the banner region
+ * @see https://github.com/kenwheeler/slick/
+ */
+/*globals require, requirejs, define, jQuery, Drupal, IGA */
+// # Bolero Banner
+// ## Slick
+define("bolero.banner.slick", ["jquery","underscore", "bolero.slickAnalytics", "IGA.events", "css!jquery/slick/slick.css", "jquery/slick/slick.min"],
+	function($, _, SlickAnalytics, events){
+	"use strict";
+	function BoleroBanner($banner){
+		var tracking = new SlickAnalytics($banner);
+		var slick_defaults = {
+			infinite:true, centerMode:false, centerPadding: '0px', arrows:true,
+			autoplay:false, autoplaySpeed:5000, pauseOnHover:true,
+			responsive: [{
+				breakpoint: 600,
+				settings:{ fade:false }
+			},
+				{
+					breakpoint: 599,
+					settings: { fade:false, arrows: false /*centerMode: true,*//*centerPadding: '10%'*/ }
+				}],
+			onInit: function(slider){
+				tracking.init(slider);
+				events.trigger("bolero.banner.init", [slider]);
+				if(slider.$slides.length){
+					// autoplay any video in the first slide.
+					$(slider.$slides[0]).find("video.bolero-gifv[autoplay]").each(function(){
+						var video = this;
+						$(this).on("bolero.gifv.reattach", function(){ try{video.play();}catch(e){} });
+						try{ video.play(); }catch(e){}
+					});
+				}
+			},
+			onReInit: function(slider){
+				tracking.init(slider);
+				events.trigger("bolero.banner.reinit", [slider]);
+			},
+			onBeforeChange: function(slider, currentIndex, targetIndex){
+				$(slider.$slides[currentIndex]).find("video").each(function(){
+					this.pause();
+				});
+				events.trigger("bolero.banner.beforechange", [slider, currentIndex, targetIndex] );
+			},
+			onAfterChange: function(slider, index){
+				$(slider.$slides[index]).find("video[autoplay]").each(function(){
+					this.play();
+				});
+				events.trigger("bolero.banner.afterchange", [slider, index]);
+			}
+		};
+
+		var _settings = _.extend(slick_defaults, Drupal.settings.bolero.banner.slick);
+		$banner.slick(_settings);
+
+		function personalize(event, $personalize_block, chosen_option, osid){
+			if($banner.find($personalize_block).length > 0){
+				// If this personalize block is within the banner.
+				var $block = $personalize_block.children(".block").first(),
+					$block_content = $block.children("div.block__content"),
+					block_content = $block_content.html();
+				if(block_content && block_content.trim() === ""){
+					// Remove empty personalized blocks
+					var $slides = $personalize_block.siblings(":not(.slick-cloned)").andSelf(),
+						index = $slides.index($personalize_block);
+					$banner.slickRemove(index);
+				}else{
+					// and personalized slides already in the banner carousel.
+					var $block_node = $block_content.children(".node[data-nid]"),
+						block_nid = null;
+					if($block_node.length > 0){ block_nid = $block_node.attr("data-nid"); }
+					$personalize_block.siblings().each(function(){
+						// ### For each slide
+						var $slide = $(this),
+							$entity = $slide;
+						if($slide.not(".node, .block")){
+							// Find the node or block inside it.
+							$entity = $slide.children(".node, .block").first();
+						}
+						if($entity.length > 0 && $block.length > 0){
+							if($block[0].id === $entity[0].id || block_nid && block_nid === $entity.attr("data-nid")){
+								// If the same block or node is present elsewhere in the banner remove it as a duplicate.
+								var $slides = $slide.siblings(":not(.slick-cloned)").andSelf(),
+									index = $slides.index($slide);
+								// Note: `.views-row` classes are not updated.
+								$banner.slickRemove(index);
+							}
+						}else if(Drupal.settings.personalize.option_sets[osid].executor === "callback"){
+							//TODO support executor = callback to update slick asynchronously.
+						}
+					});
+				}
+				$personalize_block.addClass("visible");
+			}
+		}
+
+		events.on("personalize.personalizeDecision", personalize).replay("personalize.personalizeDecision", personalize);
+	}
+	return BoleroBanner;
+});
+
+(function($){
+    "use strict";
+    //## Initialize Banner Region
+    var $banner = $(".l-banner .l-region--banner").first(),
+	    carousel_version = Drupal.settings.bolero.banner.library || "slick";
+	Drupal.settings.bolero.banner.$banner = $banner;
+	if($banner.length === 0){ return; }
+	// and load the carousel
+    switch(carousel_version){
+        case "owl":
+            // ### Owl Carousel
+            require(["css!jquery/owl-carousel/owl.carousel.css", "css!jquery/owl-carousel/owl.theme.css","jquery/owl-carousel/owl.carousel.min"], function(){
+                $banner.addClass("carousel");
+                $banner.owlCarousel({ items:1, loop:true, autoplay:true, autoplayTimeout: 5000, autoplayHoverPause:true, autoHeight:true, navigation:true, dots:true });
+            });
+            break;
+        case "flexslider":
+	        require(["jquery/flexslider/jquery.flexslider-min", "css!jquery/flexslider/flexslider.css"], function(){
+		        var options = $.extend(Drupal.settings.bolero.banner.flexslider || {}, { animation: "slide", selector: ".l-region--banner > *" });
+		        $banner.parent().flexslider(options);
+	        });
+            break;
+        case "slick":
+        default:
+	        // ### Slick Carousel
+            if($banner.children().length > 1){
+                require(["bolero.banner.slick"], function(BoleroBanner){
+                    new BoleroBanner($banner);
+                });
+            }
+    }
+})(jQuery);
+;
+/**
+ * @file bolero-main.layout.js
+ */
+(function($){
+    "use strict";
+
+	//# Setup Menu Icon Animation
+    function activateHamburger(event) {
+        var el = $(this);
+        if (el.hasClass('active')){
+            el.addClass('active-end');
+            el.one('transitionend', function(){
+                el.removeClass('active active-end');
+            });
+        } else {
+            el.addClass('active');
+        }
+    }
+    $('.menu-icon').click(activateHamburger);
+})(jQuery);
+;
+/**
+ * @file bolero.offcanvas.js
+ *
+ */
+//# Bolero Off Canvas
+//TODO re-do data-oc-presentation to allow multiple oc sides.
+define("bolero.offcanvas", ["jquery", "underscore", "IGA.events"], function($, _, events){
+    "use strict";
+    var OffCanvas = {
+        init: function($offCanvasWrap){
+            OffCanvas.initAjaxDetails($offCanvasWrap);
+            if(require.specified("Soundmanager.360.events")){
+                //initialize 360 player
+                OffCanvas.init360();
+            }
+            var presentationClass = $offCanvasWrap.attr("data-oc-presentation");
+            $offCanvasWrap.find(".off-canvas-close").on("click", function(e){
+                var $this = $(this),
+                    presentation = $this.attr("data-oc-presentation") || presentationClass;
+                e.preventDefault();
+                $offCanvasWrap.foundation('offcanvas', 'hide', presentation);
+            });
+
+            $offCanvasWrap.find("a.bolero-off-canvas-toggle").once(function(){
+                //Foundation open / close events don't play well with standard *-toggle class links so we do this with JS.
+                var $this = $(this),
+                    presentation = $this.attr("data-oc-presentation") || "move-left",
+                    menuSelector = $this.attr("data-oc-menu"),
+                    $offCanvasMenu = $offCanvasWrap.find("."+menuSelector);
+                $this.on("click", function(e){
+                    e.preventDefault();
+                    $offCanvasWrap.foundation('offcanvas', 'toggle', presentation);
+                    OffCanvas.position($offCanvasWrap, $offCanvasMenu);
+                });
+            });
+
+            //initialize scrolling listener
+            OffCanvas.onscroll();
+        },
+        refresh: function($container){
+            if(typeof threeSixtyPlayer !== "undefined" && $container.is(".view.view-releases")){
+                threeSixtyPlayer.init();
+            }
+            OffCanvas.initAjaxDetails($container);
+        },
+        initAjaxDetails: function($container){
+            // Attach details link click listener
+            $container.find(".ajax_details:not(.drupal-attached)").each(function() {
+                var $this = $(this),
+                    $track = $this.closest(".field-collection-item-field-tracks");
+                $this.on("click", function(e) {
+                    OffCanvas.details(e, $this);
+                });
+                $track.on("click", function(e){
+                    var $target = $(e.target),
+                        smLink = $track.find(".sm2_link").get(0),
+                        sound = threeSixtyPlayer.lastSound;
+                    if(!$target.is("a") && typeof threeSixtyPlayer !== "undefined" &&
+                        (!sound || sound.url !== smLink.href) &&
+                        $target.parents(".paragraphs-items-field-providers").length === 0 ){
+                        //Fake an event for the soundmanager player
+                        threeSixtyPlayer.handleClick({ target: smLink });
+                    }
+                });
+            }).addClass("drupal-attached");
+        },
+        onscroll: _.once(function (){
+            // Hide off canvas main when scrolled past content.
+            // Only call this function once.
+            require(["underscore","jquery/plugins/jquery.viewport.min"], function(_){
+                var $offCanvasMain = $('.l-main.off-canvas-wrap'),
+                    presentationClass = $offCanvasMain.attr("data-oc-presentation");
+                var onScroll = _.debounce(function() {
+                    if ($offCanvasMain.find(".ajax-target .details-more-link:above-the-top").length > 0) {
+                        $offCanvasMain.removeClass('offcanvasActive');
+                        $offCanvasMain.foundation('offcanvas', 'hide', presentationClass);
+                        $(".ajax_details").removeClass('active');
+                    }
+
+                    if ($offCanvasMain.find(".ajax-target .field--name-title:below-the-fold").length > 0) {
+                        $offCanvasMain.removeClass('offcanvasActive');
+                        $offCanvasMain.foundation('offcanvas', 'hide', presentationClass);
+                        $(".ajax_details").removeClass('active');
+                    }
+                }, 200);
+                //debounce to fire every 200ms instead of constantly
+                $(window).on("scroll", onScroll);
+            });
+        }),
+        init360: _.once(function(){
+            //listen for Soundmanager 360 events in tracks
+            require(["Soundmanager.360.events"], function(events){
+                events.on("Soundmanager.360.play", OffCanvas.on360Play);
+                events.on("Soundmanager.360.resume", OffCanvas.on360Play);
+                events.on("Soundmanager.360.pause", OffCanvas.on360Pause);
+                events.on("Soundmanager.360.stop", OffCanvas.on360Pause);
+                events.on("Soundmanager.360.finish", OffCanvas.on360Pause);
+            });
+        }),
+        on360Play: function(three60Player){
+            var $link = $(three60Player._360data.oLink),
+                $track = $link.closest(".field-collection-item-field-tracks"),
+                $detailsLink = $track.find(".ajax_details:first"),
+                $offCanvasWrap = $detailsLink.closest(".off-canvas-wrap"),
+                $field = $link.closest(".field"),
+	            $node = $link.closest("article.node"),
+                sound = threeSixtyPlayer.lastSound;
+            if($track.closest(".field").is(".field--name-field-tracks")){
+                //only trigger off canvas details if this play event is within the releases view.
+                $track.addClass("active");
+	            $node.addClass("active");
+                if( !$offCanvasWrap.is(".offcanvasActive") || !sound || sound.url !== $link.attr("href") ){
+                    OffCanvas.details(null, $detailsLink);
+                }
+            }
+        },
+        on360Pause: function(three60Player){
+            var $link = $(three60Player._360data.oLink),
+                $track = $link.closest(".field-collection-item-field-tracks"),
+	            $node = $link.closest("article.node");
+            $track.removeClass("active");
+	        $node.removeClass("active");
+        },
+        loadContent: function($el, $offCanvasAjax, callback) {
+            var target = $el.attr('href'),
+                base =  $el.attr('id');
+            // ajax callback to replace contents in offCanvas
+            require(["jquery","Drupal.ajax"], function($){
+                $.ajax({
+                    url: target
+                }).done(function(response) {
+                    var ajax = new Drupal.ajax(base, $el, { url: target}),
+                        data = response[1];
+                    //todo replace selector in response?
+                    data.selector = $offCanvasAjax;
+                    ajax.commands.insert(ajax, data);
+                    if(callback){ callback($offCanvasAjax, data); }
+                });
+            });
+        },
+        details: function(e, $el) {
+	        if($el.length === 0){ return; }
+            var $offCanvasWrap = $el.closest(".off-canvas-wrap"),
+                $offCanvasOuter = $('#page'),
+                presentationClass = $offCanvasWrap.attr("data-oc-presentation"),
+                side = $offCanvasWrap.attr("data-oc-side"),
+                menuSelector = "."+side+"-off-canvas-menu",
+                $offCanvasMenu = $offCanvasWrap.children(menuSelector),
+                $offCanvasInner = $offCanvasWrap.children(".inner-wrap"),
+                $offCanvasAjax = $offCanvasWrap.find("> aside .ajax-target");
+            if($offCanvasWrap.is(".view")){
+                $offCanvasOuter = $offCanvasWrap.closest(".block--views");
+            }
+            $offCanvasAjax.empty();
+            // prevent default behavior
+            if (e !== null) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+            }
+
+            var $track = $el.closest(".field-collection-item-field-tracks"),
+	            $node = $el.closest("article.node");
+            if($track.length > 0){
+                $(".field-collection-item-field-tracks").removeClass("active");
+                $track.addClass("active");
+	            $node.addClass("active").siblings(".node").removeClass("active");
+            }
+
+            //todo .ajax-details -> .offcanvas-details
+            OffCanvas.loadContent($el, $offCanvasAjax, _.partial(OffCanvas.position, $offCanvasWrap, $offCanvasMenu));
+
+            //remove all other off canvas close listeners
+            $offCanvasInner.off("click.offcanvas");
+            $offCanvasOuter.off("click.offcanvas", offCanvasClose);
+            function offCanvasClose(e) {
+                var $target = $(e.target);
+                if ($offCanvasWrap.is(".offcanvasActive") && $target.closest(".field-collection-item-field-tracks").length === 0 &&
+                    $target.closest(menuSelector).get(0) !== $offCanvasMenu.get(0) )
+                {
+                    $offCanvasWrap.removeClass('offcanvasActive');
+                    $offCanvasWrap.foundation('offcanvas', 'hide', presentationClass);
+                    $(".ajax_details").removeClass('active');
+                    events.trigger("bolero.offcanvas.close", [$offCanvasWrap, $el, $offCanvasAjax, presentationClass]);
+                    $offCanvasInner.off("click.offcanvas", offCanvasClose);
+                    $offCanvasOuter.off("click.offcanvas", offCanvasClose);
+	                $node.removeClass("active");
+                }
+            }
+
+            // if active details link
+            if ($el.hasClass('active')) {
+                // hide off canvas
+                $offCanvasWrap.foundation('offcanvas', 'hide', presentationClass).removeClass('offcanvasActive');
+                $el.removeClass('active');
+            } else {
+                //TODO empty offcanvas, loading?
+                // show offcanvas
+                $offCanvasWrap.foundation('offcanvas', 'show', presentationClass);
+                $offCanvasWrap.addClass('offcanvasActive');
+                events.trigger("bolero.offcanvas.show", [$offCanvasWrap, $el, $offCanvasAjax, presentationClass]);
+
+                // Close offcanvas
+                setTimeout(function(){
+                    //without the deferred call 360 player triggers a close.
+                    $offCanvasInner.on("click.offcanvas", offCanvasClose);
+                    $offCanvasOuter.on("click.offCanvas", offCanvasClose);
+                },0);
+
+                // remove the active state current details link
+                $(".ajax_details").removeClass('active');
+                // set active state
+                $el.addClass('active');
+            }
+        },
+        position: function($offCanvasWrap, $offCanvasMenu){
+            var $window = $(window),
+                $offCanvasContainer = $offCanvasMenu.children(".off-canvas-container");
+            if($offCanvasMenu.height() > $window.height()){
+                //If the off-canvas region is bigger than the window then we need to position it.
+                var scrollTop = $window.scrollTop(),
+                    offCanvasPadding = parseInt($offCanvasWrap.css('padding').replace("px", ""));
+                // calculate position
+                var offset = $offCanvasWrap.offset(),
+                    position = $offCanvasWrap.position(),
+                    headerHeight = $("#page > .inner-wrap > .l-header").height(),
+                    ocWrapHeight = $offCanvasWrap.outerHeight(true),
+                    margin = 0;
+                if (scrollTop > offset.top) {
+                    margin = scrollTop - position.top - offCanvasPadding + headerHeight;
+                }
+                $offCanvasContainer.css('margin-top', margin);
+                require(["imagesloaded"], function(imagesLoaded){
+                    imagesLoaded($offCanvasContainer.get(0)).on("always", function(){
+                        //var ocHeight = $offCanvasAjax.height() + margin;
+                        var ocHeight = $offCanvasContainer.outerHeight(true);
+                        if(ocHeight > ocWrapHeight){
+                            // If the off-canvas menu is taller than the wrapper, add a margin-bottom to the wrapper.
+                            //$offCanvasWrap.css("padding-bottom", "+=" + (ocHeight - ocWrapHeight));
+                            $offCanvasContainer.css("margin-top", "-=" + (ocHeight - ocWrapHeight));
+                        }
+                        //TODO follow & .off on close.
+                    });
+                });
+            }
+        }
+    };
+    return OffCanvas;
+});
+
+(function($){
+    Drupal.behaviors.boleroOffCanvas = {
+        attach: function(context, settings){
+            var presentationClass,
+                $context = $(context);
+			if(!settings.bolero){ return; }
+            if (settings.bolero.offCanvasContentSide === 'right') {
+                presentationClass = settings.bolero.offCanvasContentAnimation + '-left';
+            } else {
+                presentationClass = settings.bolero.offCanvasContentAnimation + '-right';
+            }
+            if($context.is(".view")){
+                //views load more
+                require(["bolero.offcanvas"], function(OffCanvas){
+                    OffCanvas.refresh($context);
+                });
+            }else{
+                $('.off-canvas-wrap:not(.drupal-attached)', context).not("#page").once(function() {
+                    //TODO support load more / re-binding links
+                    var $offCanvasWrap = $(this);
+                    $offCanvasWrap.attr("data-oc-presentation", presentationClass).attr("data-oc-side", settings.bolero.offCanvasContentSide);
+                    require(["bolero.offcanvas"], function(OffCanvas){
+                        OffCanvas.init($offCanvasWrap);
+                    });
+                }).addClass("drupal-attached");
+            }
+        }
+    };
+})(jQuery);
+;

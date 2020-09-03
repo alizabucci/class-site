@@ -1,0 +1,1383 @@
+(function($) {
+	"use strict";
+	var dbasfe = Drupal.behaviors.asf_events = {
+		attach: function(context, settings) {
+			var $context = $(context);
+			$(".asf-events-anonymous-login", context).addBack(".asf-events-anonymous-login").once("asf-events", function(){
+				$(this).on("click", dbasfe.login);
+			});
+		},
+		login: function(e){
+			e.preventDefault();
+			e.stopImmediatePropagation();
+			IGA.login();
+		}
+	};
+
+	require(["jquery", "IGA.utils"], function() {
+		$(".onSaleDate").each(function() {
+			var d = new Date(parseInt($(this).attr('data-date-timestamp') + "000"));
+			var clientTime = IGA.utils.dateFormat(d, 'hhtt');
+			$(this).text("On Sale at " + clientTime + " local");
+		});
+	});
+
+})(jQuery);
+;
+/*globals require, requirejs, define, jQuery, Drupal */
+/**
+ * @file
+ * bolero.mesasges.js
+ *
+ * Use Google Materialize Snackbar to display messages.
+ */
+define("bolero.messages", ["jquery", "underscore"], function($, _){
+	"use strict";
+	var authcache_messages = Drupal.settings.authcache_messages,
+		BoleroMessages = {
+		init: function(settings){
+			this.items = settings ? settings.items : [];
+			var self = this;
+			if(this.items.length > 0){
+				require(["bolero.snackbar"], function(Snackbar){
+					for (var i in self.items) {
+						var message = self.items[i];
+						if(!message.$snackbar_item){
+							var $snackbar_item = Snackbar.add(message.content, true, null, { type: message.type });
+							message.$snackbar_item = $snackbar_item;
+							var removeMessage = _.partial(function(message){
+								var index = self.items.indexOf(message);
+								if(index >= 0){
+									self.items.splice(index, 1);
+								}
+							}, message);
+							$snackbar_item.on("remove", removeMessage);
+							$snackbar_item.find('.message--close').on('click', function() {
+								$snackbar_item.remove();
+							});
+						}
+					}
+				});
+			}
+
+			// Get authcache_messages messages
+			if(authcache_messages && authcache_messages.data && !BoleroMessages.authcache_init){
+				var messages = authcache_messages.data.messages;
+				BoleroMessages.authcache_init = true;
+				require(["bolero.snackbar"], function(Snackbar){
+					for(var type in messages){
+						for(var i in messages[type]){
+							Snackbar.add(messages[type][i], true, null, { type: type });
+						}
+					}
+				});
+			}else{
+				// Get bolero_messages from cookie
+				var cookie = $.cookie("bolero_messages");
+				if(cookie){
+					// remove the cookie
+					$.cookie("bolero_messages", null, { path:'/' });
+					require(["bolero.snackbar"], function(Snackbar){
+						var messages = JSON.parse(cookie);
+						for(var m in messages){
+							messages[m].content = decodeURIComponent(messages[m].content);
+							Snackbar.add(messages[m].content, true, null, { type: messages[m].type });
+						}
+					});
+				}
+			}
+
+		}
+	};
+	return BoleroMessages;
+});
+
+/**
+ *  Displays messages with Google Materialize Snackbar.
+ */
+(function($){
+	Drupal.behaviors.bolero_messages = {
+		attach: function (context, settings) {
+			require(["bolero.messages"], function(BoleroMessages){
+				BoleroMessages.init(settings.bolero_messages);
+			});
+		}
+	};
+	$(document).on("messages", function(){
+		Drupal.behaviors.bolero_messages.attach(document, Drupal.settings);
+	});
+})(jQuery);
+;
+/**
+ * Email Subscription Integration
+ * @file iga_common.subscribe.js
+ */
+/* globals require, requirejs, define, jQuery, Drupal, IGA */
+
+/**
+ * Email Subscription EventEmitter bus
+ */
+define("EmailSubscription.events", ["inherits", "EventEmitter.history"], function( inherits, EventEmitter ) {
+	"use strict";
+	return new EventEmitter();
+});
+
+/**
+ * Email mailing list subscription utilities for optin / optout and GA tracking.
+ */
+define("EmailSubscription", ["jquery", "underscore", "googleanalytics", "IGA.webshim.storage"], function($, _){
+	"use strict";
+	// Constants
+	var cSUBSCRIBED = "list_subscribed_",
+			cOPTOUT = "list_optout_",
+			cOPTINS = "list_optins",
+			cSUBSCRIBE_DEFAULT = "list_subscribe_default_",
+			cMAILINGLIST_OPTOUT = "mailinglist_optout_";
+
+	var EmailSubscription = {
+		lists: {},
+		/**
+		 * Get the listId from a checkbox input.
+		 */
+		getListId: function($list) {
+			var listId = $list.attr("data-list-id") || $list.attr("data-et-listId");
+			if (!listId) {
+				listId = $list.val();
+				if (listId === "1 "|| listId === "0") {
+					return null;
+				}
+			}
+			return listId;
+		},
+		/**
+		 * Get the list accountId / businessUnit from the element or the
+		 * EmailSubscription list settings.
+		 *
+		 * @param $list
+		 * @param listId
+		 * @returns {*}
+		 */
+		getAccountId: function($list, listId) {
+			if (listId) {
+				var esl = Drupal.settings.email_subscription_lists || {};
+				if (esl.lists && esl.lists[listId]) {
+					return esl.lists[listId].businessUnit || esl.lists[listId].accountId;
+				}
+			}
+			return $list.attr("data-account-id") || $list.attr("data-et-buid");
+		},
+		/**
+		 * Get the list name from the element or the EmailSubscription list settings.
+		 *
+		 * @param $list
+		 * @param listId
+		 * @returns {*}
+		 */
+		getListName: function($list, listId) {
+			if (listId) {
+				var esl = Drupal.settings.email_subscription_lists || {};
+				if (esl.lists && esl.lists[listId]) {
+					return esl.lists[listId].listName;
+				}
+			}
+			return $list.attr("data-list-name") || $list.attr("data-et-listname");
+		},
+		/**
+		 * Get lists within a webform matching a listId.
+		 *
+		 * @param $el
+		 * @param listId
+		 * @returns $el[]
+		 */
+		findlist: function($el, listId) {
+			return  $el.find(".subscription-lists input[data-list-id="+listId+"], .subscription-lists input[data-et-listid="+listId+"]");
+		},
+		/**
+		 * Add a list to the EmailSubscription.lists index.
+		 * @param $list
+		 * @param type
+		 * @param $form
+		 */
+		addList: function($list, type, $form) {
+			var listId = EmailSubscription.getListId($list),
+			    listName = EmailSubscription.getListName($list, listId),
+			    businessUnit = EmailSubscription.getAccountId($list, listId);
+			if (EmailSubscription.lists[listId]) { return; }
+
+			EmailSubscription.lists[listId] = {
+				listId: listId,
+				businessUnit: businessUnit, // TODO rename to account?
+				listName: listName,
+				type: type,
+				$form: $form,
+				isSubscribed: _.partial(EmailSubscription.isSubscribed, listId),
+				isOptedOut: _.partial(EmailSubscription.isOptedOut, listId)
+			};
+		},
+		/**
+		 * Check whether the user has previously subscribed to a list.
+		 * @param listId
+		 * @returns {boolean}
+		 */
+		isSubscribed: function (listId) {
+			return localStorage.getItem(cSUBSCRIBED + listId) === "1";
+		},
+		/**
+		 * Check whether the user has previoiusly opted out from a list.
+		 * @param listId
+		 * @returns {boolean}
+		 */
+		isOptedOut: function (listId) {
+			return localStorage.getItem(cOPTOUT + listId) === "1";
+		},
+		/**
+		 * Remember the user has subscribed to a list.
+		 * @param listId
+		 * @param subscribed
+		 */
+		setSubscribed: function (listId, subscribed) {
+			if (subscribed) {
+				localStorage.setItem(cSUBSCRIBED + listId, 1);
+				// We use a cookie as well as localStorage so the subscription status is
+				// known server-side.
+				$.cookie(cSUBSCRIBED + listId, '1', { path: '/' });
+			} else {
+				localStorage.setItem(cSUBSCRIBED + listId, 0);
+				$.cookie(cSUBSCRIBED + listId, 0, { expires: -1, path: '/' });
+			}
+			$.cookie(cSUBSCRIBE_DEFAULT + listId, 0, { expires: -1, path: '/'});
+		},
+		setSubscribeDefault: function (listId) {
+			$.cookie(cSUBSCRIBE_DEFAULT + listId, '1', { path: '/' });
+		},
+		/**
+		 * Remove the subscribed list from localstorage & the cookie.
+		 * @param listId
+		 */
+		clearSubscribed: function (listId) {
+			localStorage.removeItem(cSUBSCRIBED + listId);
+			$.cookie(cSUBSCRIBED + listId, 0, { expires: -1, path: '/' });
+		},
+		/**
+		 * Remember that the user has opted out/in of a list.
+		 * @param listId
+		 * @param optout
+		 */
+		setOptOut: function (listId, optout) {
+			var list = EmailSubscription.lists[listId],
+			    optins = EmailSubscription.getOptins();
+			if (!list) {
+				ga("send", "exception", { appName: "EmailSubscription", exDescription: "Unknown list: " + listId, exFatal: false });
+				return;
+			}
+			// Update optin status.
+			if (optout) {
+				localStorage.setItem(cOPTOUT + listId, 1);
+				$.cookie(cSUBSCRIBE_DEFAULT + listId, 0, { expires: -1, path: '/' });
+				if(list){
+					ga("send", "event", "Marketing Communication", "optout", list.listName+" | "+list.businessUnit+"/"+list.listId);
+				}
+				if (optins[listId]) { delete optins[listId]; }
+			} else {
+				localStorage.removeItem(cOPTOUT + listId);
+				//$.cookie(cSUBSCRIBE_DEFAULT + listId, '1', { path: '/' });
+				if (list) {
+					ga("send", "event", "Marketing Communication", "optin", list.listName+" | "+list.businessUnit+"/"+list.listId);
+				}
+				optins[listId] = 1;
+			}
+			EmailSubscription.setOptins(optins);
+
+			// Update webform lists to keep the optin status in sync.
+			var $webforms = $("form.webform-client-form.webform-subscription-lists");
+			$webforms.each(function() {
+				var $list = EmailSubscription.findlist($(this), listId);
+				$list.prop("checked", !optout);
+			});
+		},
+		getOptins: function() {
+			var optins = localStorage.getItem(cOPTINS);
+			return optins ? JSON.parse(optins) : {};
+		},
+		setOptins: function(optins) {
+			localStorage.setItem(cOPTINS, JSON.stringify(optins));
+		},
+		clearOptins: function() {
+			var optins = EmailSubscription.getOptins();
+			// Clear out old optins
+			_.each(optins, function(v, listId){
+				$.cookie(cSUBSCRIBE_DEFAULT + listId, 0, { expires: -1, path: '/' });
+				delete optins[listId];
+			});
+			return optins;
+		},
+		/**
+		 *
+		 * @param $ml
+		 * @param includeOptOut
+		 * @returns {boolean}
+		 */
+		isSubscribedToLists: function($ml, includeOptOut) {
+			if (!$ml){ $ml = $("#mailing-list"); }
+			if ($ml.length === 0) { return; }
+			if (typeof includeOptOut === "undefined") { includeOptOut = true; }
+			var $lists = $ml.find("input.subscription-lists"),
+				mlId = $ml[0].id,
+				numLists = $lists.length,
+				numSubscribed = 0,
+				form_optout =  sessionStorage.getItem(cMAILINGLIST_OPTOUT + mlId);
+			if (includeOptOut && form_optout === "1") {
+				return true;
+			}
+
+			$lists.each(function() {
+				var $list = $(this),
+				    listId = EmailSubscription.getListId($list);
+					if (EmailSubscription.isSubscribed(listId) || includeOptOut && EmailSubscription.isOptedOut(listId)) {
+						numSubscribed++;
+					}
+			});
+			return (numSubscribed === numLists);
+		},
+		modal: {
+			original: {},
+			open: function($el, options){
+				if(!$el){ $el = $("#mailing-list"); }
+				if($el.length === 0){ return; }
+
+				options = options || {};
+				if(!$el.is(".reveal-modal")){
+					EmailSubscription.modal.original.$placeholder = $('<div class="et-modal-placeholder"></div>');
+					$el.after(EmailSubscription.modal.original.$placeholder);
+					$el.addClass("reveal-modal");
+					$el.attr("data-reveal", "");
+					if(!options.roadblock){
+						$el.find(".block__content").prepend('<a class="close-reveal-modal" aria-label="Close">×</a>');
+					}
+					//$el.appendTo(document.body);
+				}
+
+				var closeOffScreen = _.debounce(function(){
+					require(["jquery/plugins/jquery.viewport.min"], function(){
+						if(!$.inviewport($el, { threshold: -100 })){
+							$el.foundation('reveal', 'close');
+							$(window).off("scroll", closeOffScreen);
+						}
+					});
+				}, 200);
+
+				var $title = $el.find(".block__title");
+				EmailSubscription.modal.original.title = $title.html();
+				if(options.title){
+					$title.html(options.title);
+				}
+				if(options.header){
+					$el.find(".block__content").prepend('<div class="block--custom-header">'+options.header+'</div>');
+				}
+				var fndtn_options = {};
+				if(options.classes){
+					$el.addClass(options.classes);
+				}
+				if(options.bg_class){
+					fndtn_options.bg_class = options.bg_class;
+				}
+				if(options.roadblock){
+					fndtn_options.close_on_background_click = false;
+				}else{
+					$(window).on("scroll", closeOffScreen);
+				}
+
+				$(document).foundation('reveal', 'reflow');
+				$el.one("closed.fndtn.reveal", _.partial(EmailSubscription.modal.close, $el));
+				$el.foundation('reveal', 'open', fndtn_options);
+
+				//#### Analytics
+				options.ga_dimensions = _.extend({ "dimension4": "modal", "dimension5": IGA.conversionPt }, options.ga_dimensions);
+				$el.find('input[name="campaign"]').val(options.campaign || IGA.conversionPt);
+				if(options.ga_dimensions && options.ga_dimensions.dimension3){
+					$el.find('input[name="social"]').val(options.ga_dimensions.dimension3);
+				}
+				ga("send", "event", "Interaction", 'open', $el[0].id, Date.now() - IGA.timingStart, options.ga_dimensions);
+			},
+			close: function($el){
+				if(!$el){ $el = $("#mailing-list"); }
+				if($el.length === 0){ return; }
+				// restore classes
+				var original = EmailSubscription.modal.original,
+					elId = $el[0].id;
+				if(original.title){
+					$el.find(".block__title").html(original.title);
+					$el.find(".block--custom-header").remove();
+				}
+				$el.find(".block--custom-header").remove();
+				if(original.$placeholder){
+					$el.removeClass("reveal-modal").removeAttr("data-reveal").attr("style", "");
+					$el.find(".block__content .close-reveal-modal").remove();
+					$el.insertAfter(original.$placeholder);
+					original.$placeholder.remove();
+				}
+				EmailSubscription.modal.original = {};
+				$el.find('input[name="campaign"], input[name="social"]').val("");
+				if(!EmailSubscription.isSubscribedToLists($el) && elId){
+					return sessionStorage.setItem(cMAILINGLIST_OPTOUT + elId, "1");
+				}
+			}
+		},
+		casl: function(reason, broadcast){
+			//if(EmailSubscription.optout_default){ return; }
+			$("form.webform-subscription-lists").each(function(){
+				var $webform = $(this);
+				$webform.find("div.umg-disclaimer .casl-message").remove();
+				if( reason === "casl" ){
+					$webform.find("div.umg-disclaimer").append(EmailSubscription.casl_message);
+				}
+				$webform.find(".subscription-lists input.subscription-list").each(function(){
+					$(this).prop( "checked", false );
+				});
+			});
+			EmailSubscription.optout_default = true;
+			require(["IGA.events"], function(events){
+				//events.off("optout.default", EmailSubscription.casl);
+				if(reason && broadcast === true){ events.trigger("optout.default", [reason]); }
+			});
+		},
+		casl_regex: new RegExp(/[ABCEGHJKLMNPRSTVXY][0-9][ABCEGHJKLMNPRSTVWXYZ]\s?[0-9][ABCEGHJKLMNPRSTVWXYZ][0-9]/),
+		casl_message: '<p class="casl-message" ><br>** Emails will be sent by or on behalf of UMG Recordings Services, Inc. 2220 Colorado Avenue, Santa Monica , CA 90404 (310) 865-4000. You may withdraw your consent at any time. See Privacy Policy at <a href="http://privacypolicy.umusic.com">http://privacypolicy.umusic.com</a>.</p>'
+	};
+	return EmailSubscription;
+});
+
+require(["jquery", "EmailSubscription.events", "EmailSubscription", "googleanalytics", "IGA.webshim.storage"], function($, ESEvents, ES, ga){
+	"use strict";
+	// Attach the email subscription tracker
+	function ga_data(list){
+		var data = { nonInteraction: true };
+		if(list.display){ data.dimension4 = list.display; }
+		if(list.campaign){ data.dimension5 = list.campaign; }
+		return data;
+	}
+	function trackSubscribe(list){
+		var accountId = list.accountId|| list.businessUnit;
+		ga("send", "event", "Conversion", "mailinglist subscribe", list.listName + " | " + accountId + "/" + list.listId, null, ga_data(list));
+		ES.setSubscribed(list.listId, true);
+	}
+	function trackUnsubscribe(list){
+		var accountId = list.accountId|| list.businessUnit;
+		ES.setSubscribed(list.listId, false);
+		ga("send", "event", "Conversion", "mailinglist unsubscribe", list.listName + " | " + accountId + "/" + list.listId, null, ga_data(list));
+	}
+	// and track past events
+	ESEvents.on("subscribe", trackSubscribe).replay("subscribe", trackSubscribe);
+	ESEvents.on("unsubscribe", trackSubscribe).replay("unsubscribe", trackUnsubscribe);
+});
+
+require(["EmailSubscription", "IGA.events"], function(ES, events){
+	"use strict";
+	events.on("optout.default", ES.casl).replay("optout.default", ES.casl);
+});
+
+// # EmailSubscription Webform
+(function($) {
+	"use strict";
+	var cSUBSCRIBED_LISTS = "subscribed_lists";
+	var dbwsl = Drupal.behaviors.webform_subscription_lists = {
+		attached: false,
+		attach: function(context){
+			require(["underscore", "IGA.events", "EmailSubscription", "EmailSubscription.events", "IGA.user", "IGA.webshim.storage"],
+				function(_, events, ES, ESEvents, user) {
+				// Attach to each webform element in the context.
+				$("form.webform-subscription-lists", context).addBack(context).once("webform-subscription-lists", function() {
+					var $webform = $(this),
+					    nid = $webform.attr("data-nid"),
+					    $lists = $webform.find(".subscription-lists input.subscription-list");
+
+					// ## Process the lists on the webform.
+					$lists.each(function() {
+						var $list = $(this),
+						    listId = ES.getListId($list);
+						ES.addList($list, "webform", $webform);
+						// Track the optout status when the list is checked / unchecked.
+						$list.on("click", function(){
+							var checked = $list.prop("checked");
+							if (checked === false) {
+								ES.setOptOut(listId, true);
+							} else if(checked === true) {
+								ES.setOptOut(listId, false);
+							}
+						});
+					});
+
+					// ## After submitting the webform:
+					$webform.on("submitted", function() {
+						var $submit = $webform.find('.form-actions input.form-submit'),
+						    $modal = $webform.parents("div[data-reveal]");
+						// Update the submit button text.
+						if ($submit.val() === "Subscribe"){
+							$submit.css({fontFamily: "fontello"}).addClass("icon-input").val("\ue860 Subscribed");
+						}
+						$submit.attr("disabled", true);
+
+						$webform.find(".form-item input, .form-item select").one("change", function(){ $submit.attr("disabled", false); });
+						if ($modal.length > 0) {
+							// Hide the modal.
+							setTimeout(function(){ $modal.foundation('reveal', 'close'); }, 250);
+						}
+
+						if ($.cookie) {
+							// Perform an AJAX redirect.
+							var cookie_name = 'webform_redirect_' + nid,
+							    redirect = $.cookie(cookie_name);
+							if (redirect && redirect !== "") {
+								$.cookie(cookie_name, null, { path:'/' });
+								window.location.href = redirect;
+							}
+						}
+					});
+
+					// ## Check for CASL / Opt-out countries.
+					var casl_match = _.debounce(function(){
+						var $zip = $(this), zip = $zip.val().toUpperCase();
+						if (zip.match(ES.casl_regex)) {
+							ES.casl("casl", true);
+							$zip.off("change", casl_match);
+						}
+					});
+					$webform.find("input[name='submitted[zip_code]'], input[autocomplete=postal-code]").on("change", casl_match);
+
+					function country_detect(){
+						var $country = $(this);
+						events.trigger("country.manual", [$country.val()]);
+					}
+					$webform.find("select[autocomplete=country],select[autocomplete=country-name]").on("change", country_detect).each(function(){
+						var $this = $(this), country = $this.val().toUpperCase();
+						if(!dbwsl.attached && country !== "US" && country !== "UNITED STATES"){
+							country_detect.call(this);
+						}
+					});
+
+				});
+
+				if (!dbwsl.attached) {
+					// ## Listen for subscriptions on the form
+					$(document).on("subscribe", function(e, list){
+						ESEvents.trigger("subscribe", [list]);
+					}).on("unsubscribe", function(e, list){
+						ESEvents.trigger("unsubscribe", [list]);
+					});
+					dbwsl.attached = true;
+				}
+
+				if ($.cookie) {
+					var cookie = $.cookie(cSUBSCRIBED_LISTS), lists;
+					if(cookie){
+						lists = JSON.parse(cookie);
+						$.cookie(cSUBSCRIBED_LISTS, null, { path:'/' });
+					}
+					if (lists) {
+						for(var listId in lists){
+							var list = lists[listId];
+							_.each(["listName", "display", "campaign"], function(f){
+								if(list[f]){ list[f] = decodeURIComponent(list[f]); }
+							});
+							ESEvents.trigger("subscribe", [list]);
+						}
+					}
+				}
+			});
+		}
+	};
+})(jQuery);
+
+;
+/**
+ * @file Standard Bolero analytics events
+ */
+//# Bolero Analytics
+define("bolero.analytics", ["jquery", "underscore", "googleanalytics"], function($, _){
+    "use strict";
+	var Analytics = {
+		start: Date.now(),
+		initialized: false,
+		$nodes: [],
+		$webforms: [],
+		label: function($el){
+			if($el.is(".node")){
+				var title = $el.attr("data-nid"),
+					nid = $el.attr("data-title"),
+					view_mode = $el.attr("data-view-mode");
+				return title + " ("+nid+")" + (view_mode ? (" ["+view_mode+"]"):"");
+			}else if($el[0] && $el[0].id){
+				return $el[0].id;
+			}else{
+				return null;
+			}
+		},
+		trackImpressions: function(){
+			require(["jquery/plugins/jquery.viewport.min"], function(){
+				var viewed_nodes = [], viewed_webforms = [];
+				_.each(Analytics.$nodes, function($node, index){
+					if($node && !$.belowthefold($node, { threshold: - $node.height() * 0.75 })){
+						$node.trigger("impression");
+						viewed_nodes.push($node);
+					}
+				});
+				Analytics.$nodes = _.difference(Analytics.$nodes, viewed_nodes);
+
+				_.each(Analytics.$webforms, function($webform, index){
+					if($webform && !$.belowthefold($webform, { threshold: - $webform.height() })){
+						$webform.trigger("impression");
+						viewed_webforms.push($webform);
+					}
+				});
+				Analytics.$webforms = _.difference(Analytics.$webforms, viewed_webforms);
+
+			});
+		},
+		attach: function(context){
+			$(".node:not(.l-region--banner.bolero-banner--slick .node, .view-bolero-slick .node)", context).once("bolero-analytics", function(){
+				var $node = $(this),
+					url = $node.attr("data-alias");
+				//Track node clickthru
+				$node.find("a[href='"+url+"']").on("click", function(e){
+					ga("send", "event", "Interaction", "click", Analytics.label($node));
+				});
+				//Node impression tracking
+				if(!$node.is(".node--full")){
+					//pageviews aren't impressions
+					Analytics.$nodes.push($node);
+					$node.one("impression", function(){
+						//track when the node was viewed
+						ga("send", "event", "Interaction", "impression", Analytics.label($node), Date.now() - Analytics.start, {nonInteraction: 1});
+					});
+				}
+			});
+			$(".webform-client-form", context).once("bolero-analytics", function(){
+				var $webform = $(this),
+					$modal = $webform.closest("div[data-reveal]");
+				if($modal.length === 0){
+					// Only track non-modal webforms.
+					// modal webforms handled by IGA.bolero.ModalLink
+					Analytics.$webforms.push($webform);
+					$webform.one("impression", function(){
+						//track when the node was viewed
+						ga("send", "event", "Interaction", "impression", Analytics.label($webform), Date.now() - Analytics.start, {nonInteraction: 1});
+					});
+				}
+				$webform.one("mousedown", function(){
+					ga("send", "event", "Interaction", "focus", Analytics.label($webform), Date.now() - Analytics.start, {nonInteraction: 1});
+				});
+				$webform.find("input.form-submit").one("mousedown", function(){
+					ga("send", "event", "Interaction", "submit", Analytics.label($webform), Date.now() - Analytics.start, {nonInteraction: 1});
+				});
+			});
+			if(Analytics.initialized === false){
+				$(window).on("scroll", _.debounce( Analytics.trackImpressions, 250));
+			}
+			Analytics.trackImpressions();
+
+			//## Commerce add to cart
+			//TODO change to IGA.events.on("add to cart", ...);
+			//## Node click tracking
+			//note: slick carousel tracking is separate in slickAnalytics
+			$("form.commerce-add-to-cart .form-submit").once("asf-commerce", function(){
+				var $this = $(this);
+				$this.on("click", function(){
+					var $node = $this.closest(".node--product, .node--product-bundle-display");
+					ga("send", "event", "Commerce", "add to cart", Analytics.label($node));
+				});
+			});
+			Analytics.intialized = true;
+		}
+	};
+
+	return Analytics;
+});
+
+(function($, Drupal) {
+    "use strict";
+    var dbba = Drupal.behaviors.boleroAnalytics = {
+        attach: function(context, settings){
+	        if(dbba.attached){ return; }
+	        dbba.attached = true;
+			require(["bolero.analytics"], function(Analytics){
+				Analytics.attach(context);
+			});
+        }
+    };
+})(jQuery, Drupal);
+;
+/*globals jQuery, Drupal, require, define, IGA, Modernizr */
+/**
+ * @file bolero.global.js
+ * @author Malcolm Poindexter <malcolm.poindexter@umusic.com>
+ */
+// # Bolero Global
+(function($, Drupal) {
+	"use strict";
+    Drupal.behaviors.bolero = {
+        attach: function(context, settings){
+
+        }
+    };
+
+	require(["underscore"], function(_){
+		if(typeof Foundation !== "undefined"){
+			//# Initialize Zurb Foundation
+			$(document).foundation();
+		}
+	});
+
+    //Hack around fixed header
+    if($(document).height() - $(window).height() <= 40){
+        $("#page").css("padding-bottom", "+=150");
+    }
+
+    //## Global Bolero functions
+    IGA.bolero = IGA.bolero || {};
+
+    IGA.bolero.picturefillMediaThumb = function($picture){
+        //Get the picture for this lightbox item
+        var pf = picturefill._,
+            $pictureCopy = $picture.clone(),
+            $imgCopy = $pictureCopy.children("img");
+        //Remove the thumbnail source.
+        $pictureCopy.children('source').each(function(index){
+            if(index < 2){ $(this).remove(); }
+        });
+        //Find the best image url using the Picturefill API
+        var firstMatch = pf.getMatch($imgCopy[0], $pictureCopy[0]);
+        if(!firstMatch){ return; }
+        var candidates = pf.processSourceSet( firstMatch ),
+            bestCandidate = candidates[0];
+        for ( var i = 0; i < candidates.length; i++ ) {
+            if ( candidates[i].resolution >= pf.getDpr() ) {
+                bestCandidate = candidates[i];
+                break;
+            }
+        }
+
+        //! Hack to get picturefill and clearing lightbox to play nice together.
+        //Set an href on a picture(?) because clearing only checks the parent container.
+        $picture.attr("href", bestCandidate.url);
+        return bestCandidate.url;
+    };
+
+    //## Main menu sub-menu hover
+    $(function(){
+        var _blurs = [],
+            $menu_links = $(".l-navigation .menu-name-main-menu > .links li.expanded");
+
+        $menu_links.each(function(){
+            var $menu_item = $(this),
+                $submenu = $menu_item.children("ul").first(),
+                _delay = null,
+                _opacity = '',
+                _bg_color = '';
+
+            function _focus(){
+                clearTimeout(_delay);
+                _opacity = $submenu.css("opacity");
+                _bg_color = $submenu.css("background-color");
+                $submenu.css({ display: "block", opacity: _opacity, backgroundColor: _bg_color });
+            }
+
+            function _blur(){
+                $submenu.css({ display:"", opacity:"", backgroundColor:"" });
+                $submenu.css({ display:"", opacity:"", backgroundColor:"" });
+            }
+
+            $menu_links.not($menu_item).on("mouseenter touchstart", _blur);
+
+            $menu_item.on("mouseenter touchstart", _focus);
+
+            $menu_item.on("mouseleave", function(){
+                _delay = setTimeout(_blur, 400);
+            });
+        });
+    });
+
+	// ## Detect touch
+	if("ontouchstart" in window){
+		document.documentElement.className = document.documentElement.className + " touch";
+	}
+
+	// ## Acquia Lift Decision Integration
+	// @see http://cgit.drupalcode.org/personalize_ga/tree/js/personalize_ga.js
+	if(Drupal.settings.personalize){
+		$(document).on('personalizeDecision', function(event, $option_set, chosen_option, osid) {
+			require(["IGA.events"], function(events){
+				events.trigger("personalize.personalizeDecision", [event, $option_set, chosen_option, osid]);
+			});
+		});
+	}
+
+	// ## Disable qtip on mobile
+	var disableQtip = typeof Modernizr !== undefined && Modernizr.mq && Modernizr.mq("(max-width: 1025px)");
+	if(disableQtip){
+		define("qtip", function(){
+			$.fn.qtip = function(){};
+		});
+	}
+
+})(jQuery, Drupal);
+
+// TODO move to bolero.snackbar.js
+define("bolero.snackbar", ["jquery", "underscore", "IGA.utils", "jquery/mobile/jquery.mobile.events"], function($, _){
+	"use strict";
+    var $snackbar = $("#snackbar"),
+        snackTemplate = _.template('<div class="item"><div class="item-wrapper {{type}} {{actionClass}}"><span class="message">{{message}}</span><a href="#" class="action {{actionName}}" onclick="return false;">{{action}}</a></div></div>');
+    var Snackbar = {
+        delay:{ add: 10000, remove: 800 },
+        add: function(message, action, actionCallback, options){
+	        options = options || {};
+            var solo = options.solo || false,
+	            remove = typeof options.remove === "undefined" ? true : options.remove,
+	            type = options.type || '',
+	            actionName = action;
+            if (solo) {
+	            // One message at a time.
+	            Snackbar.remove();
+            }
+	        if( typeof action === "undefined"){ action = true; }
+	        if(action === true){
+		        action = '<i class="icon icon-close icon-cancel-1"></i>';
+		        actionName = "close";
+	        }
+	        if(action){
+		        actionName = "action-" + actionName.replace(" ", "-");
+	        }
+	        if(type === "error"){
+		        remove = false;
+	        }
+
+            var $item = $(snackTemplate({message: message, type: type, action:action, actionClass: !action ? '': 'has-action', actionName: actionName}));
+            $item.find("a.action" ).on("click", function(e){
+                if(actionCallback){ actionCallback(); }
+	            $item.addClass("close-left");
+                Snackbar.remove($item);
+            });
+            $snackbar.append($item);
+            $item.addClass("open");
+            $item.on("swipeleft", function(){ $item.addClass("close-left"); Snackbar.remove($item); });
+	        $item.on("swiperight", function(){ $item.addClass("close-right"); Snackbar.remove($item); });
+	        //todo draggable
+	        if(remove){
+		        $item.on("mouseenter", function(){ Snackbar.pause($item); });
+		        Snackbar.delayRemove($item);
+	        }
+	        return $item;
+        },
+        remove: function($item){
+            $item = $item || $snackbar.children(".item").first();
+	        if($item){
+		        $item.removeClass("open").addClass("close close-left");
+		        var timer = $item.data("snackbar-timer");
+		        if(timer){ clearTimeout(timer); }
+		        setTimeout(function(){
+			        $item.trigger("remove").remove();
+		        }, Snackbar.delay.remove);
+	        }
+            return $item;
+        },
+	    _remove: function($item){
+		    return function(){ Snackbar.remove($item); };
+	    },
+	    clear: function(){
+		    $snackbar.children().each(function(){
+			   Snackbar.remove($(this));
+		    });
+		    return this;
+	    },
+	    pause: function($item){
+			var timer = $item.data("snackbar-timer");
+		    if(timer){ clearTimeout(timer); }
+		    $item.on("mouseleave", function(){ Snackbar.delayRemove($item); });
+		    return $item;
+	    },
+	    delayRemove: function($item){
+		    $item = $item || $snackbar.children(".item").first();
+		    if($item){
+			    var numItems = $snackbar.children().length;
+			    var timer = setTimeout(Snackbar._remove($item), Snackbar.delay.add * numItems);
+			    $item.data("snackbar-timer", timer);
+		    }
+		    return $item;
+	    }
+    };
+    return Snackbar;
+});
+
+// TODO move to bolero.modallink
+//## Setup Foundation Reveal Modals
+define("IGA.bolero.ModalLink", ["jquery", "underscore", "IGA", "IGA.utils", "googleanalytics"], function($, _, IGA, utils){
+    "use strict";
+	var $window = $(window);
+    var ModalLink = {
+	    iframeTemplate: _.template('<iframe src="{{src}}" width="{{width}}" height="{{height}}" frameborder="0" style="margin:0 auto;display:block;" ></iframe>'),
+        init: function($this){
+            //Get the element's properties
+            var type = $this.attr('data-type'),
+                targetId = $this.attr('data-target') || $this.get(0).className || "",
+                $target = $(targetId),
+                _preload = $this.attr('data-preload'),
+                preload = _preload === "true",
+                $preload = null;
+            if($target.length === 0){
+                $target = $("#bolero-modal");
+                if($target.length === 0){
+                    $target = $('<div id="bolero-modal" class="reveal-modal" style="display:none;" data-reveal ><div></div><a class="close-reveal-modal">&#215;</a></div>');
+                    $(document.body).append($target);
+                }
+            }
+            if(preload){
+                $preload = $("#bolero-preload");
+                if($preload.length === 0){
+                    $preload = $('<div id="bolero-preload" style="display:none" ></div>');
+                    $(document.body).append($preload);
+                }
+            }
+
+            var _load = function(){},
+                modal = "",
+                w = $this.attr("data-width") || "100%",
+                h = $this.attr("data-height") || $window.height() * 0.8;
+
+            switch(type){
+                case "iframe":
+                    //Create an iframe for the modal
+                    var url = $this.prop("href") || $this.attr("data-src");
+                    modal = ModalLink.iframeTemplate({ width: w, height: h, src: url }) ;
+
+                    if(preload){
+                        $preload.append(modal);
+                    }
+                    break;
+                default:
+
+                    break;
+            }
+
+            _load = function(){
+                var oldClass = $target.data("oldClass"),
+                    newClass = $this.attr("data-class");
+                if(oldClass){ $target.removeClass(oldClass); }
+                if(newClass){ $target.addClass(newClass); $target.data("oldClass", newClass); }
+                $target.children(":first-child").empty().append(modal);
+                //$target.css({ "width": w, "height":h });
+            };
+
+            $this.on("click", function(e){
+                if($target.length > 0){
+                    e.preventDefault();
+                    require(["foundation.reveal"], function(){
+                        if(type === "iframe"){ _load(); }
+                        $target.foundation('reveal', 'open');
+	                    ga("send", "event", "Interaction", 'open', targetId.replace('#', ''), Date.now() - IGA.timingStart);
+                    });
+                }
+            });
+        }
+    };
+    IGA.bolero.ModalLink = ModalLink;
+    return ModalLink;
+});
+
+//## Add Bolero Reveal Modal to links
+require(["jquery"], function($){
+    "use strict";
+    $(function(){
+        //On Document Ready
+        $(".bolero-modal-link").each(function(){
+            //load any modal links via require
+            var $link = $(this);
+            require(["IGA.bolero.ModalLink"], function(ModalLink){
+                ModalLink.init($link);
+            });
+        });
+    });
+});
+;
+
+//## Drupal Behaviors
+(function($){
+	Drupal.behaviors.bolero_emcee = {
+		attach: function(context, settings){
+			var $context = $(context);
+			if(require.specified("IGA.common.webform")){
+				require(["jquery", "IGA.common.webform"], function($, Webform){ //TODO on .iga-common-webform
+					//Add input type="date"
+					if(Modernizr && Modernizr.inputtypes.date){
+						$("form#user-profile-form .field-widget-date-select").once(Webform.dateInput);
+					}
+				});
+			}
+			if($context.is("div[id^=addressfield-wrapper]")){
+				$context.closest(".field-type-addressfield").trigger("addressfield.change");
+			}
+		}
+	};
+})(jQuery);
+;
+/**
+ * AE Social Login Drupal Behaviors
+ */
+/*globals jQuery, Drupal, IGA, aeJS */
+(function($) {
+	"use strict";
+	var dsae = Drupal.settings.ae_social_login,
+		dbae = Drupal.behaviors.ae_social_login = {
+		$block: $("#block-ae-social-login-ae-social-login"),
+		isReady: false,
+		remoteOnly: false,
+		auth: "register",
+		isMobile: dsae && dsae.settings ? !dsae.settings.auth_window : false,
+		ready: function(aeJS){
+			if(dbae.$block.length){
+				if(Drupal.settings.ae_social_login.override_login !== true){
+					aeJS.events.onLogin.addHandler(dbae.login);
+				}
+				if(Drupal.settings.ae_social_login.override_logout !== true){
+					aeJS.events.onLogout.addHandler(dbae.logout);
+				}
+			}
+			// Make sure aeJS exists in the global scope.
+			window.aeJS = window.aeJS || aeJS;
+
+			if( dsae.smartAuth === true ){
+				if(window.sessionStorage){
+					// If the user has logged in earlier in this session, consider
+					// it safe to merge their account.
+					dbae.auth = sessionStorage.getItem("ae_social_login.auth") || dbae.auth;
+				}
+				if(dbae.auth === "auth"){
+					dbae.updateAuth();
+				}else{
+					aeJS.events.onLogin.addHandler(dbae.updateAuth);
+				}
+				aeJS.events.onLogout.addHandler(function(){
+					dbae.auth = "register";
+					if(window.sessionStorage){
+						sessionStorage.removeItem("ae_social_login.auth");
+					}
+				});
+			}
+
+			if(location.href.indexOf("accessToken=") > 0 && typeof history.pushState === "function"){
+				// We don't want the user sharing a page with an accessToken.
+				history.pushState(null, document.title, location.pathname);
+			}
+
+			aeJS.events.onMobileDetect.addHandler(function(){ dbae.isMobile = true; });
+			dbae.isReady = true;
+			dbae.attach(document, Drupal.settings.ae_social_login);
+
+			for(var c in readyCallbacks){
+				readyCallbacks[c](aeJS);
+			}
+			readyCallbacks = [];
+
+			function element_login(ae_user, state, sso){
+				if(state !== 'init'){
+					var $el = dbae.getTriggeringElement();
+					if($el){ $el.trigger("ae_login", [$el , ae_user, state, sso]); }
+				}
+			}
+			aeJS.events.onLogin.addHandler(element_login);
+			aeJS.events.onUser.addHandler(element_login);
+		},
+		onReady: function(callback){
+			if(typeof callback !== "function"){ return; }
+			if(dbae.isReady){
+				callback(aeJS);
+			}else{
+				readyCallbacks.push(callback);
+			}
+		},
+		attach: function(context, settings){
+			if(!dbae.isReady){ return; }
+			if($.cookie && $.cookie("ae_social_login_redirect_login")){
+				$.cookie("ae_social_login_redirect_login", null, { path:'/' });
+				dsae.redirect_login = true;
+				var redirect_required_fields = $.cookie("ae_social_login_redirect_required_fields");
+				if(redirect_required_fields){
+					dsae.redirect_required_fields = redirect_required_fields;
+					$.cookie("ae_social_login_redirect_required_fields", null, { path:'/' });
+				}
+			}
+			var $context = $(context);
+			if(context !== document){
+				// Attach to any forms loaded outside of the document ex. via ajax
+				$context.once("ae_social_login", function(){
+					// setup all AE register / login forms
+					if($context.is("form[data-ae-register-form]")){
+						dbae.attachForm($context, settings);
+					}else{
+						// We want to call aeJS.trigger.attach on a form, not a container, otherwise all forms will get re-attached.
+						$context.find("form[data-ae-register-form]").each(function(){
+							dbae.attachForm($(this), settings, true);
+						});
+					}
+				});
+			}else{
+				$context.find("form[data-ae-register-form]").each(function(){
+					dbae.attachForm($(this), settings, false);
+				});
+				//! BUGFIX AEJS requires a re-attach of data-ae-register-link onLogin
+				aeJS.events.onLogin.addHandler(function(){
+					dbae.attachLinks(document);
+				});
+			}
+
+			dbae.attachLinks(context);
+
+			// Add an AE logout to all Drupal logout links
+			$('a[href="/user/logout"]', context).bind('click', function(e) {
+				if(aeJS){ aeJS.trigger.logout(); }
+			});
+		},
+		attachForm: function($form, settings, attach){
+			var form_id = $form.find("input[name=form_id]").val(),
+				submitting = false;
+			function submit(ae_user, type){
+				//### After the AE login
+				if(!submitting){ return; }
+				if(type === "init"){ return; }
+				var $ae_user = $form.find("input[name=ae_user]");
+				// update the form with the ae user
+				$ae_user.val(JSON.stringify(ae_user));
+				$form[0].action = location.pathname + location.search;
+				dbae.updateForm($form);
+				// and submit.
+				$form.unbind('submit');
+				$form.submit();
+				submitting = false;
+			}
+
+			function error(err){
+				// Display AE login error messages
+				if(!submitting){ return; }
+				if(err.message){
+					$(".messages").first().addClass("messages--error").html(err.message).show();
+				}
+			}
+
+			if($.inArray(form_id.replace(/_/g,"-"), settings.forms) > -1){// settings.forms.indexOf()
+				var $formSubmit = $form.find(".form-submit");
+				if(attach){
+					aeJS.trigger.attach($form[0]);
+				}
+				$formSubmit.on("mousedown", function(e){
+					// When the user submits the form copy field values to their ae fields
+					dbae.map_ae_fields($form);
+				});
+				// or opens any form-related AE links
+				$form.find("a.ae-register-link").on("click", function(){
+					submitting = true;
+				});
+				$form.on("submit", function(){ submitting = true; });
+
+				if(aeJS.user.data){
+					aeJS.events.onUser.addHandler(submit);
+				}else{
+					aeJS.events.onLogin.addHandler(submit);
+				}
+				aeJS.events.onFlow.addHandler(function(e){
+					if(e.step === "error"){ error(e.error); }
+				});
+			}
+		},
+		setRemoteOnly: function(){
+			function nextWindow(state){
+				if(state.state === "closed"){
+					dbae.remoteOnly = false;
+					aeJS.events.onWindow.removeHandler(nextWindow);
+					aeJS.events.onLogin.removeHandler(nextLogin);
+					aeJS.settings.return_url = dsae.settings.return_url;
+				}
+			}
+			function nextLogin(user, type){
+				setTimeout(function(){
+					dbae.remoteOnly = false;
+					aeJS.events.onWindow.removeHandler(nextWindow);
+					aeJS.events.onLogin.removeHandler(nextLogin);
+					aeJS.settings.return_url = dsae.settings.return_url;
+				}, 0);
+			}
+			dbae.remoteOnly = true;
+			aeJS.events.onWindow.addHandler(nextWindow);
+			aeJS.events.onLogin.addHandler(nextLogin);
+			aeJS.settings.return_url = location.pathname + "?remoteOnly=1";
+		},
+		attachLinks: function(context){
+			$("a.ae-register-link[data-remote-only]", context).once("ae_social_login", function(){
+				// Handle remote registration only links
+				var $link = $(this);
+				$link.on("click", function(){
+					dbae.setRemoteOnly();
+				});
+			});
+
+			function onUser(user){
+				for(var s in user.services){
+					var service = user.services[s].Service;
+					$("a.ae-register-link[data-ae-register-link="+service+"], a.ae-register-link[data-ae-login-link="+service+"], a.ae-register-link[data-ae-auth-link="+service+"]").addClass("connected");
+				}
+			}
+			aeJS.events.onUser.addHandler(onUser);
+			aeJS.events.onLogin.addHandler(onUser);
+			aeJS.events.onLogout.addHandler(function(){
+				$("a.ae-register-link").removeClass("connected");
+			});
+
+		},
+		updateAuth: function(user, type, sso){
+			if(sso){ return; }
+			dbae.auth = "auth";
+			if(window.sessionStorage){
+				// Keep track of auth in sessionStorage
+				sessionStorage.setItem("ae_social_login.auth", "auth");
+			}
+			$("a[data-ae-register-link]").each(function(){
+				var $this = $(this), social = $this.attr("data-ae-register-link");
+				$this.attr("data-ae-register-link", null).attr("data-ae-auth-link", social);
+				aeJS.trigger.attach($this);
+			});
+			$("a[data-ae-login-link]").each(function(){
+				var $this = $(this), social = $this.attr("data-ae-login-link");
+				$this.attr("data-ae-login-link", null).attr("data-ae-auth-link", social);
+				aeJS.trigger.attach($this);
+			});
+		},
+		//## AE Block login callback
+		login: function(user){
+			if(dbae.remoteOnly){ return; }
+			if(user && user.data.AccessToken && $("body").hasClass("not-logged-in")){
+				$.ajax({
+					url: window.location.origin+"/api/ae_social_login/user",
+					type: "POST",
+					async: true,
+					data: {user: user},
+					beforeSend: function(){
+						$(".ae_bar_loader").hide();
+						$(".ae_social_login_services").prepend("<div class='ae_bar_loader'></div>");
+					},
+					success: function(response) {
+						var user = response.match(/\"uid\"/g) ? JSON.parse(response) : null;
+						if(user && user.uid){ //check that valid user object is returned
+							//TODO fire an event before reload
+							window.location.reload();
+						} else {
+							//TODO fire an error
+							$(".ae_bar_loader").replaceWith('<p>There was an error signing in</p>');
+						}
+					}
+				});
+			}
+		},
+		logout: function(){
+			window.location.href= "/user/logout";
+		},
+		map_ae_fields: function($form){
+			dbae.remove_ae_field_mappings($form);
+			// Note bind = true only works for manual user input, to cover autocomplete, call map fields just before AE submission.
+			if(!Drupal.settings.ae_social_login.form_field_mapping){ return; }
+			var form_id = $form.find("input[name=form_id]").val();
+			$.each(Drupal.settings.ae_social_login.form_field_mapping, function(drupal_field_path, ae_field){
+				var dFieldPath = drupal_field_path.split('.');
+				// If this mapping is for this form
+				if(dFieldPath.length < 2 || dFieldPath[0] !== form_id ){ return; }
+				var field_name = dFieldPath[1];
+				// If the Drupal field exists on the form,
+				var $drupal_field = $form.find('input[name="'+field_name+'"], .form-item-'+field_name).last(),
+					$ae_field = $form.find('input[name="'+ae_field+'"]'), ae_val;
+				//Note
+				if($drupal_field.length > 0 && $drupal_field.is("input") && $ae_field.length === 0){
+					// and the AE field doesn't exist,
+					ae_val = $drupal_field.val();
+					if(!!ae_val){
+						// and the field has a value.
+						$ae_field = $("<input class='ae-field-mapping-field' name='"+ae_field+"' type='hidden' value='"+ae_val+"' />");
+						$form.append($ae_field);
+					}
+				}else if(ae_field === "birthdate" && $ae_field.length === 0){
+					// Handle drupal date select fields
+					var $day = $drupal_field.find("select.day, input.day, select[name$=\"[day]\"]"),
+						$month = $drupal_field.find("select.month, input.month, select[name$=\"[month]\"]"),
+						$year = $drupal_field.find("select.year, input.year, select[name$=\"[year]\"]"),
+						day = $day.val(),
+						month = $month.val(),
+						year = $year.val(),
+						ae_birthdate = null,
+						today = new Date().toISOString().split("T")[0];
+					if(month){ month = ("00" + month).slice(-2); }
+					if(day){ day = ("00" + day).slice(-2); }
+					if(year && month && day){ ae_birthdate = year + '-' + month + '-' + day; }
+					if(ae_birthdate && ae_birthdate !== today){
+						// Add the birthdate if it has been set / changed.
+						$ae_field = $("<input class='ae-field-mapping-field' name='"+ae_field+"' type='hidden' value='"+ae_birthdate+"' />");
+						$form.append($ae_field);
+					}
+				}
+			});
+			return this;
+		},
+		remove_ae_field_mappings: function($form){
+			$form.find("input.ae-field-mapping-field").remove();
+			return this;
+		},
+		updateForm: function($form){
+			dbae.remove_ae_field_mappings($form);
+			// Update form fields with values from the AE user
+			var form_id = $form.find("input[name=form_id]").val();
+			if( !aeJS.user || !aeJS.user.data ){ return; }
+			$.each(Drupal.settings.ae_social_login.form_field_mapping, function(drupal_field_path, ae_field){
+				var dFieldPath = drupal_field_path.split('.');
+				// If this mapping is for this form
+				if(dFieldPath.length < 2 || dFieldPath[0] !== form_id ){ return; }
+				var field_name = dFieldPath[1];
+				for(var dataField in aeJS.user.data){
+					if(dataField.toLowerCase() === ae_field){
+						var $drupal_field = $form.find('input[name="'+field_name+'"], .form-item-'+field_name).last();
+						if($drupal_field.length > 0 && $drupal_field.is("input")){
+							$drupal_field.val(aeJS.user.data[dataField]);
+						}else if(ae_field === "birthdate"){
+							var $day = $drupal_field.find("select.day, input.day, select[name$=\"[day]\"]"),
+								$month = $drupal_field.find("select.month, input.month, select[name$=\"[month]\"]"),
+								$year = $drupal_field.find("select.year, input.year, select[name$=\"[year]\"]"),
+								dob = aeJS.user.data.BirthDate.split('-');
+							if(dob.length === 3){
+								$day.val(parseInt(dob[2]));
+								$month.val(parseInt(dob[1]));
+								$year.val(dob[0]).trigger("change");
+							}
+						}
+					}
+				}
+			});
+		},
+		$trigggeringEl: null,
+		getTriggeringElement: function(){
+			try{
+				if(dbae.$trigggeringEl){ return dbae.$trigggeringEl; }
+				var elId = $.cookie("ae_login_triggering_element");
+				if(elId){
+					return $(document.getElementById(elId));
+				}
+			}finally{
+				dbae.clearTriggeringElement();
+			}
+		},
+		setTriggeringElement: function($el){
+			dbae.$trigggeringEl = $el;
+			if($el && $el[0].id && dbae.isMobile){
+				$.cookie("ae_login_triggering_element", $el[0].id, { path:'/' });
+			}
+		},
+		clearTriggeringElement: function(){
+			dbae.$trigggeringEl = null;
+			$.cookie("ae_login_triggering_element", null, { path:'/' });
+		}
+	},
+	readyCallbacks = [];
+})(jQuery);
+;

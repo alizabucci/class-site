@@ -1,0 +1,434 @@
+(function($) {
+
+  initPage();
+
+    // ------------------------------------ //
+    // Initialize Page
+    // -------------------------------------//
+
+    function initPage() {
+
+      $('.subscribe-link').on('click', function(e){
+        e.preventDefault();
+        $('.block--dotmailer-rest-webform-dm-mail-icon-nav .icon-mail').trigger('click');
+      });
+
+      // Target the Legal menu item
+      $('a.evidon-notice-link').click(function(e) {
+        e.preventDefault();
+        $('#_evh-link').click();
+      });
+
+      // Adjustments to Markup That Can't Be Done Via Drupal Admin
+      initMiscAdjustments();
+
+      // Change .highlight background and text colors based on attributes
+      initHighlights();
+
+      // Lazy Loaded Images
+      // initLazyImages();
+
+      // HeadroomJS
+      initHeadroom();
+
+      // Static Event Maps as the headline image backgrounds
+      // initEventMap();
+
+      // Slide-In Follow Buttons
+      $('.slide-in').each(function() {
+        $(this).find('.slide-in__toggle, .slide-in__close').on( "click", function() {
+          $(this).parent().parent().toggleClass('slide-in--open');
+        });
+      });
+
+      requirejs(['//cdnjs.cloudflare.com/ajax/libs/jquery-smooth-scroll/1.7.2/jquery.smooth-scroll.min.js'],
+        function(smoothScroll) {
+          // $('.front .l-banner').prepend('<div class="scroll-down"><a href="#block-views-releases-latest-release-block"></a></div>');
+          // $('.scroll-down a').smoothScroll();
+          $('.block--dotmailer-rest-webform .icon-mail').smoothScroll({speed:1000});
+          $('.smooth-scroll').smoothScroll({speed:1000});
+      });
+
+      // Static Event Maps as the headline image backgrounds
+      // initEventMap();
+
+      $(window).on('load', function() {
+
+        // Initialize Sticky Sidebar
+        // initStickySidebar();
+
+        // Trigger Slide In Follow Buttons on Load
+        $('.slide-in .slide-in__toggle').trigger('click');
+
+        setTimeout(function(){
+          $('.slide-in').removeClass('slide-in--open');
+        }, 3000);
+
+      });
+
+      // Debounced Scroll and Resize Events
+      requirejs(['underscore'],
+        function(underscore) {
+
+          // Initialize for non touch screen devices
+          if (!$("html").hasClass("touch")) {
+
+            // Determine whether or not to parallax header based on SASS
+            var parallaxBG = window.getComputedStyle(
+              document.querySelector('#page'), ':before'
+            ).getPropertyValue('content');
+
+            parallaxBG = parallaxBG.replace(/"/g, ""); // Remove double quotes
+
+            // Set main banner carousel bgs to parallax if enable via SASS
+            if (parallaxBG == 'parallax') {
+
+              var dbMoveHeader = _.debounce(parallaxBanner, 10);
+              $(window).resize(dbMoveHeader);
+              $(window).scroll(dbMoveHeader);
+              parallaxBanner();
+
+            }
+
+            /*var dbCheckOnScreen = _.debounce(checkOnScreen, 100);
+            $(window).scroll(dbCheckOnScreen);
+            $(window).resize(dbCheckOnScreen);
+            checkOnScreen();*/
+
+          }
+
+          // Detect if scrolled more than 1px in order to add header shadow
+          var dbScrolled = _.debounce(scrolledDown, 250);
+          $(window).scroll(scrolledDown);
+          scrolledDown();
+
+        });
+    }
+
+  // ------------------------------------ //
+  // Detect Webkit Browsers
+  // ------------------------------------ //
+  var isWebkit = 'WebkitAppearance' in document.documentElement.style;
+
+  // ------------------------------------ //
+  // Adjustments to Markup That Can't Be
+  // Done via Drupal Admin
+  // ------------------------------------ //
+  function initMiscAdjustments() {
+
+    if (GetIEVersion() > 0) {
+      $('body').addClass('ie');
+    } else {
+      $('body').addClass('no-ie');
+    }
+
+    // Add wrapper for fixed sidebar
+    $('.not-front .l-region--sidebar-first').wrapInner("<div class='js-sidebar'></div>");
+
+    // Move webform icon into socials
+    $(".l-header .block--dotmailer-rest-webform").appendTo(".l-header .block--menu-block-iga-common-socials-nav");
+    $(".left-off-canvas-menu .block--dotmailer-rest-webform").appendTo(".left-off-canvas-menu .menu-block-iga_common_socials_oc .menu");
+
+
+    // Add sidebar wrapper for fixed sidebars
+
+    // If a user swipes the offcanvas trigger a menu close
+    $(".touch .l-off-canvas").on("swipe", function(event) {
+      $(".menu-icon.active").trigger('click');
+    })
+
+    $('.l-region--off-canvas .block--dotmailer-rest-webform .icon-mail').on("click", function() {
+      $('.exit-off-canvas').trigger("click");
+    });
+
+    //$("#mailing-list .exacttarget-webform > div > div:not(.form-item), #mailing-list .exacttarget-webform > div > fieldset").wrapAll("<div class='webform-bottom' />");
+    //$("#mailing-list .exacttarget-webform > div > .form-item").wrapAll("<div class='webform-fields' />");
+    //$('.webform-fields').closest('.exacttarget-webform').addClass('js-customized');
+
+    // $('.front .exacttarget-webform input').on('focus', function() {
+    //   $(this).parent().find('label').addClass('focused');
+    // });
+    // $('.front .exacttarget-webform input').focusout(function() {
+    //   $(this).parent().find('label').removeClass('focused');
+    // });
+
+  }
+
+  // ------------------------------------ //
+  // Add a static Google Map snapshot
+  // of the venue location on event
+  // detail pages
+  // ------------------------------------ //
+
+  function initEventMap() {
+
+    // Add static maps to event headers - Malcolm's getting this set up so that it's server side
+    $(".node-type-event").each(function() {
+      var mapKey = "AIzaSyBdpOJFEzveqznnUUdedp7Xsd58QggXqfA";
+      var mapLoc = $('.l-banner .field--name-asf-events-venue-title .field__item').html() + '+' + $('.l-banner .locality').html() + '+' + $('.l-banner .area').html();
+      var parsedMapLoc = encodeURIComponent(mapLoc);
+      //var mapImg = '//maps.googleapis.com/maps/api/staticmap?center=' + parsedMapLoc + '&size=800x300&scale=2&style=element:labels|visibility:off&style=element:geometry.stroke|visibility:off&style=feature:landscape|element:geometry|saturation:-100&style=feature:water|saturation:-100|invert_lightness:true&key=AIzaSyBdpOJFEzveqznnUUdedp7Xsd58QggXqfA';
+      // Use Snazzy Map converter here http://jsfiddle.net/gaby/s6Dyp/
+      var darkStyle = '&style=feature:all|element:labels.text.fill|saturation:36|color:0x000000|lightness:40&style=feature:all|element:labels.text.stroke|visibility:on|color:0x000000|lightness:16&style=feature:all|element:labels.icon|visibility:off&style=feature:administrative|element:geometry|visibility:off|color:0x000000&style=feature:administrative|element:geometry.fill|lightness:20|color:0x000000|visibility:off&style=feature:administrative|element:geometry.stroke|color:0x000000|lightness:17|weight:1.2|visibility:off&style=feature:administrative|element:labels.text.fill|visibility:on|color:0xdbdbdb&style=feature:landscape|element:geometry|color:0x212325|lightness:20&style=feature:landscape.man_made|element:geometry|visibility:off&style=feature:poi|element:geometry|color:0x6b2f2f|lightness:21|visibility:off&style=feature:poi|element:labels.text|visibility:off&style=feature:road|element:labels.text|visibility:simplified&style=feature:road|element:labels.text.fill|color:0x858585&style=feature:road.highway|element:geometry.fill|color:0x000000|lightness:17|visibility:on&style=feature:road.highway|element:geometry.stroke|color:0x000000|lightness:29|weight:0.2&style=feature:road.highway|element:labels.text|visibility:off&style=feature:road.arterial|element:geometry|color:0x000000|lightness:18|visibility:on&style=feature:road.arterial|element:labels.text|visibility:on&style=feature:road.arterial|element:labels.text.stroke|visibility:on&style=feature:road.local|element:geometry|color:0x000000|lightness:16&style=feature:transit|element:geometry|color:0x000000|lightness:19&style=feature:water|element:geometry|color:0x000000|lightness:17';
+      var lightStyle = '&style=feature:water|element:geometry|color:0xe9e9e9|lightness:17&style=feature:landscape|element:geometry|color:0xf5f5f5|lightness:20&style=feature:road.highway|element:geometry.fill|color:0xffffff|lightness:17&style=feature:road.highway|element:geometry.stroke|color:0xffffff|lightness:29|weight:0.2&style=feature:road.arterial|element:geometry|color:0xffffff|lightness:18&style=feature:road.local|element:geometry|color:0xffffff|lightness:16&style=feature:poi|element:geometry|color:0xf5f5f5|lightness:21&style=feature:poi.park|element:geometry|color:0xdedede|lightness:21&style=element:labels.text.stroke|visibility:on|color:0xffffff|lightness:16&style=element:labels.text.fill|saturation:36|color:0x333333|lightness:40&style=element:labels.icon|visibility:off&style=feature:transit|element:geometry|color:0xf2f2f2|lightness:19&style=feature:administrative|element:geometry.fill|color:0xfefefe|lightness:20&style=feature:administrative|element:geometry.stroke|color:0xfefefe|lightness:17|weight:1.2';
+      var mapStyle = darkStyle;
+      var mapImg = '//maps.googleapis.com/maps/api/staticmap?&size=640x240&scale=2&center=' + parsedMapLoc + '' + mapStyle + '&key=AIzaSyBdpOJFEzveqznnUUdedp7Xsd58QggXqfA';
+      $('.block--views-events-event-headline').append('<div class="event-map"></div>');
+      $('.block--views-events-event-headline .event-map').css({
+        'background-image': 'url(' + mapImg + ')',
+      });
+
+    });
+
+  }
+
+  // ------------------------------------ //
+  // Add a 'scrolled' class to the html tag
+  // (when the user scrolls down) so that
+  // we can use Modernizr to detect
+  // ------------------------------------ //
+  function scrolledDown() {
+    var scroll = getCurrentScroll();
+    if (scroll >= 1) {
+      $('html').addClass('scrolled');
+    } else {
+      $('html').removeClass('scrolled');
+    }
+  }
+
+  function getCurrentScroll() {
+    return window.pageYOffset || document.documentElement.scrollTop;
+  }
+
+
+  // ------------------------------------ //
+  // Parallax Banner Images
+  // ------------------------------------ //
+  function parallaxBanner() {
+    scrollTotal = $(window).scrollTop();
+    scrollTotal = Math.floor(scrollTotal / 5);
+    $(".l-banner .ds-region--background > div").css({
+      transform: "translate3d(0, " + scrollTotal + "px, 0px)"
+    })
+  }
+
+  // ------------------------------------ //
+  // Add custom .hihlight  background colors
+  // using data-color and data-textcolor attributes
+  // ------------------------------------ //
+  function initHighlights() {
+
+    // Set banner highlight colors
+    $(".highlight").each(function() {
+      $(this).css('background-color', function() { //or for code's consistency, i'd use background-color instead
+        return $(this).data('color')
+      });
+    });
+
+    // Set banner highlight colors
+    $(".highlight").each(function() {
+      $(this).css('color', function() { //or for code's consistency, i'd use background-color instead
+        return $(this).data('textcolor')
+      });
+    });
+
+  }
+
+
+  // ------------------------------------ //
+  // Add lazyload properties to images
+  // http://www.appelsiini.net/projects/lazyload
+  // -------------------------------------//
+  function initLazyImages() {
+    // Add lazyload properties to images
+    if (isWebkit) {
+
+      // For img tags
+      $(".l-main .ds-region--background img, .l-main .ds-region--feature-background img, .l-main .field--name-field-headline-image img, .l-footer img, .field--name-field-release-cover img, .field--name-field-photo img, .l-main .field--name-body img").each(function() {
+        // Only lazyload if below viewport
+        if ($(this).offset().top > $(window).height()) {
+          $(this).addClass('lazy');
+          $(this).attr('data-original', $(this).attr('src'));
+          $(this).attr('src', '//cache.umusic.com/_sites/kipmoore.net/images/blank.gif');
+        }
+      });
+
+      // For background images
+      $(".bolero-background-image").each(function() {
+        // Only lazyload if below viewport
+        if ($(this).offset().top > $(window).height()) {
+          $(this).addClass('lazy');
+          var bg = $(this).css('background-image');
+          bg = bg.replace('url(', '').replace(')', '');
+          bg = bg.replace('"', '').replace('"', '');
+          $(this).attr('data-original', bg);
+        }
+      });
+
+    }
+
+    // Lazyload
+    requirejs(['//cache.umusic.com/_sites/kipmoore.net/js/jquery.lazyload.js?v=1.9.1'],
+
+      function(lazyload) {
+
+        $("img.lazy, div.lazy").lazyload({
+          effect: "fadeIn"
+        });
+
+      }); // End requirejs
+
+  }
+
+  // ------------------------------------ //
+  // HeadroomJS
+  // http://wicky.nillia.ms/headroom.js
+  // -------------------------------------//
+  function initHeadroom() {
+    // HeadroomJS - http://wicky.nillia.ms/headroom.js/
+    requirejs(['//cdnjs.cloudflare.com/ajax/libs/headroom/0.7.0/headroom.min.js', '//cdnjs.cloudflare.com/ajax/libs/headroom/0.7.0/jQuery.headroom.min.js'],
+      function(headroom, jqheadroom) {
+        if ($('body').hasClass('front')) {
+          bannerOffset = $(".l-banner").height();
+        } else {
+          bannerOffset = 300;
+        }
+        //subheaderOffset = $(".l-subheader").height() - 30;
+        $(".sticky").headroom({
+          "offset": bannerOffset,
+          "tolerance": 5,
+          "classes": {
+            "initial": "animated",
+            "pinned": "slideDown",
+            "unpinned": "slideUp"
+          },
+          // callback when above offset, `this` is headroom object
+          onTop: function() {},
+          // callback when below offset, `this` is headroom object
+          onNotTop: function() {}
+        });
+
+      }); // End requirejs
+  }
+
+  // ------------------------------------ //
+  // // Sticky Sidebar
+  // -------------------------------------//
+
+  function initStickySidebar() {
+
+    if ($('.not-front .l-page').hasClass('has-one-sidebar') && $('.js-sidebar').height() < $('.l-content').height()) {
+
+      var stickyTop = $('.not-front .l-region--sidebar-first').offset().top; // returns number
+
+      $(window).scroll(function() { // scroll event
+
+        var windowTop = $(window).scrollTop(); // returns number
+
+        if (stickyTop < windowTop) {
+          //$('.js-sidebar').css({ position: 'fixed', top: 0 });
+          $('.js-sidebar').removeClass('js-static');
+          $('.js-sidebar').addClass('js-fixed');
+        } else {
+          //$('.js-sidebar').css('position','static');
+          $('.js-sidebar').removeClass('js-fixed');
+          $('.js-sidebar').addClass('js-static');
+        }
+
+      });
+    }
+
+  }
+
+  // ------------------------------------ //
+  // Check if views are on the screen
+  // -------------------------------------//
+
+  $.fn.isOnScreen = function() {
+
+    var win = $(window);
+    win.trigger('scroll');
+
+    var viewport = {
+      top: win.scrollTop(),
+      left: win.scrollLeft()
+    };
+    viewport.right = viewport.left + win.width();
+    viewport.bottom = viewport.top + win.height();
+
+    var bounds = this.offset();
+    bounds.right = bounds.left + this.outerWidth();
+    bounds.bottom = bounds.top + this.outerHeight();
+
+    return (!(viewport.right < bounds.left || viewport.left > bounds.right || viewport.bottom < bounds.top || viewport.top > bounds.bottom));
+
+  };
+
+  function checkOnScreen() {
+
+    $(".view").not('.views-loaded').each(function() {
+      if ($(this).isOnScreen() == true) {
+        $(this).addClass('on-screen');
+      }
+    });
+
+  }
+
+  // ------------------------------------ //
+  // Normalize Carousel Heights
+  // -------------------------------------//
+
+  $.fn.carouselHeights = function() {
+
+    var items = $(this), //grab all slides
+      heights = [], //create empty array to store height values
+      tallest; //create variable to make note of the tallest slide
+
+    var normalizeHeights = function() {
+
+      items.each(function() { //add heights to array
+        heights.push($(this).height());
+      });
+      tallest = Math.max.apply(null, heights); //cache largest value
+      items.each(function() {
+        $(this).css('height', tallest + 'px');
+      });
+    };
+
+    normalizeHeights();
+
+    $(window).on('resize orientationchange', function() {
+      //reset vars
+      tallest = 0;
+      heights.length = 0;
+
+      items.each(function() {
+        $(this).css('height', '0'); //reset min-height
+      });
+      normalizeHeights(); //run it again
+    });
+
+  };
+
+  function GetIEVersion() {
+    var sAgent = window.navigator.userAgent;
+    var Idx = sAgent.indexOf("MSIE");
+
+    // If IE, return version number.
+    if (Idx > 0) {
+      return parseInt(sAgent.substring(Idx + 5, sAgent.indexOf(".", Idx)));
+    }
+    // If IE 11 then look for Updated user agent string.
+    else if (!!navigator.userAgent.match(/Trident\/7\./)) {
+      return 11;
+    } else {
+      return 0; //It is not IE
+    }
+  }
+
+})(jQuery); // end of jQuery name space
+
+require(["IGA.utils"]);
+
+// Foundation libraries
+//define("foundation/foundation.topbar", ["foundation.topbar"]);
