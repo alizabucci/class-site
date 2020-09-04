@@ -1,14 +1,12 @@
-div {
-  width: 500px;
-  margin: auto;
-  border: 3px solid #73AD21;
-}
 body{
   background-color: #0f784f;
   text-align: center;
   color: #f06e70;
-  margin-left: 275px;
-  margin-right: 275px;
+  /* margin-left: 275px;
+  margin-right: 275px; */
+}
+img{
+  max-width: 100%;
 }
 h3{
   font-family: 'Anton', sans-serif;
@@ -29,6 +27,12 @@ a:hover{
 p{
   font-family: 'Anton', sans-serif;
   font-size: 20px;
+
+}
+.container{
+  max-width: 1000px;
+  margin: 0 auto;
+
 }
 .special{
   font-size: 150px;
@@ -52,6 +56,6 @@ h2{
 }
 ul{
   font-family: 'Anton', sans-serif;
-  font-size: 30px;
+  font-size: 20px;
   float: left;
 }
