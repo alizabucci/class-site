@@ -1,30 +1,48 @@
 body{
-  background-color: #4c51a1;
-  font-family: 'Rubik', sans-serif;
+  background-color: #e6edf0;
+  font-family: 'Roboto', sans-serif;
+  font-style: italic;
+  margin: 20px 90px 20px 20px;
 }
 h1{
   font-size: 120px;
-  color:yellow;
+  color:rgb(68, 193, 62);
   margin-bottom: 20px;
   text-align: right;
-  background-color:#7aaede;
+  /* background-color:#7aaede; */
   margin-top: 50px;
+  text-shadow: 6px 6px navy;
+}
+div {
+  width: 100px;
+  height: 100px;
+  position: relative;
+  animation: mymove infinite;
+  animation-duration: 10s;
+}
+@keyframes mymove {
+  0%   {left:0px; top:0px;}
+  25%  {left:600px; top:0px;}
+  50%  {left:600px; top:700px;}
+  75%  {left:0px; top:200px;}
+  100% {left:0px; top:0px;}
 }
 a{
   color:#7aaede;
   text-decoration:none;
-  font-size: 75px;
+  font-size: 50px;
   margin-top: 50px;
   margin-left: 50px;
 }
 a:hover {
-  background-color: yellow;
+  background-color: navy;
 }
 
 p{
   text-align: center;
-  font-size: 30px;
-  color:yellow;
+  font-size: 20px;
+  color:#7aaede;
+  float: left;
 }
 
 .center{
@@ -37,7 +55,22 @@ p{
 h2{
   text-align: center;
   font-size: 75px;
-  color:yellow;
+  color:navy;
+}
+h3{
+  font-size: 75px;
+  color:rgb(68, 193, 62);
+  margin-bottom: 20px;
+  text-align: center;
+  /* background-color:#7aaede; */
+  margin-top: 50px;
+  text-shadow: 4.5px 4.5px navy;
+}
+h4{
+    text-align: center;
+    font-size: 30px;
+    color:navy;
+    float: left;
 }
 
 .back{

@@ -1,0 +1,68 @@
+body{
+  background-color: rgb(132, 132, 145);
+  margin: 20px 20px 20px 20px;
+  font-family: 'Roboto', sans-serif;
+}
+div {
+  width: 100px;
+  height: 100px;
+  position: relative;
+  animation: mymove infinite;
+  animation-duration: 3s;
+}
+@keyframes mymove {
+  from {top: 0px;}
+  to {top: 200px;}
+  /* 0%   {left:0px; top:0px;}
+  25%  {left:200px; top:0px;}
+  50%  {left:200px; top:200px;}
+  75%  {left:0px; top:200px;}
+  100% {left:0px; top:0px;} */
+}
+img{
+  max-width: 50%;
+  align: center;
+  border: 7px solid rgb(25, 131, 164);
+}
+h1{
+font-size: 50px;
+text-shadow: 2px 2px white;
+}
+h2{
+
+}
+h3{
+  font-size: 50px;
+  padding-top: 60px;
+  text-shadow: 2px 2px white;
+}
+h4{
+  text-align: right;
+  font-size: 20px;
+}
+p{
+  font-family: 'Roboto', sans-serif;
+  margin-right: 900px;
+}
+.special{
+  font-size: 45px;
+  font-family: 'Libre Barcode 39 Extended Text', cursive;
+}
+mark{
+  background:rgb(122, 12, 116);
+  color: white;
+}
+a{
+  text-decoration: none;
+  color:rgb(122, 12, 116);
+}
+a:hover{
+  background-color:rgba(222, 222, 222, 0.83);
+  color:white;
+}
+ul{
+  font-size: 20px;
+}
+b{
+  color:rgb(25, 131, 164);
+}
