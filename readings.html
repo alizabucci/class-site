@@ -12,23 +12,29 @@
     font-style: italic;
     margin: 20px 90px 20px 20px;
   }
-    div.gallery {
+  .gallery-wrap{
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .gallery {
       margin: 5px;
-      border: 1px solid #7aaede;
-      float: left;
+      border: 3px solid #7aaede;
+      /* float: left; */
       width: 800px;
     }
-    div.gallery:hover {
-      border: 1px solid navy;
+  .gallery:hover {
+      border: 3px solid navy;
     }
-    div.gallery img {
+  .gallery img {
       width: 100%;
       height: auto;
     }
-    div.desc {
+    .desc {
       padding: 15px;
       text-align: center;
       color:#7aaede;
+      font-weight: bold;
     }
     h3{
       font-size: 75px;
@@ -51,6 +57,7 @@
   </head>
   <body style="background-color:#e6edf0">
     <h3>READING RESPONSES</h3>
+    <div class=gallery-wrap>
     <div class="gallery">
         <a target="_blank" href="IMG_ONE.jpg">
         <img src="IMG_ONE.jpg" alt="img1" width="600" height="400">
@@ -63,6 +70,14 @@
     <img src="IMG_TWO.jpg" alt="img2" width="600" height="400">
   </a>
   <div class="desc">"HELLO WORLD!"<br>TAEYOON CHOI<BR>AUGUST 29, 2020</div>
+</div>
+
+<div class="gallery">
+    <a target="_blank" href="IMG_THREE.jpg">
+    <img src="IMG_THREE.jpg" alt="img3" width="600" height="400">
+    </a>
+    <div class="desc">"A FRIEND IS WRITING"<br>CALLUM COPLEY<br>SEPTEMBER 10, 2020</div>
+</div>
 </div>
     <!-- <h4>"A HANDMADE WEB"</h4>
     <p>J.R. CARPENTER<br>
