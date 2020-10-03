@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title></title>
+
+    <script src="p5.js"></script>
+    <script src="p5.dom.js"></script>
+
+  </head>
+  <body>
+
+  <script>
+    //an array of nice color codes
+    var niceColors = ["#D6E815", "#545F7E", "#1A7E95", "#73FF03", "#78C937"];
+    var size;
+
+    var setup = function() {
+    	createCanvas(windowWidth, windowHeight);
+    };
+
+    var draw = function() {
+    	noStroke();
+    	size = random(10, 40);
+    	var chosenColor = random(niceColors);
+    	fill(chosenColor);
+    	ellipse(mouseX, mouseY, size, size);
+    };
+
+    //Allow clearing the canvas by clicking...
+    var mousePressed = function() {
+    	background(255);
+    }
+  </script>
+
+  </body>
+</html>
