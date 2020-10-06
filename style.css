@@ -16,9 +16,10 @@ h1{
 .floating-me {
   width: 100px;
   height: 100px;
-  position: relative;
+  position: absolute;
   animation: mymove infinite;
   animation-duration: 10s;
+  pointer-events: none;
 }
 @keyframes mymove {
   0%   {left:0px; top:0px;}
