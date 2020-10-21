@@ -1,0 +1,39 @@
+*{
+  box-sizing: border-box;
+}
+body {
+    padding: 0;
+    margin: 0;
+  }
+canvas{
+  display: flex;
+}
+input{
+  display: flex;
+}
+/* .marquee {
+  overflow: hidden;
+  width: 90ww;
+
+} */
+.marquee {
+       position: fixed;
+       top: 50px;
+       left: 0;
+       width: 90vh;
+       height: 100vh;
+       font-size: 20px;
+       font-family: monospace;
+       text-align: right;
+     }
+     .marquee .inner {
+       position: relative;
+       width: 100%;
+       display: flex;
+       color: white;
+       font-size: 8rem;
+     }
+     .marquee .inner > * {
+       white-space: nowrap;
+       padding: 0 4rem;
+     }
