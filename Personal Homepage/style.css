@@ -1,0 +1,197 @@
+*{
+  box-sizing: border-box;
+}
+.marquee {
+  overflow: hidden;
+  position: fixed;
+  width: 100vw;
+  height: 4vh;
+  background-color: black;
+  font-size: 15px;
+  color: white;
+  margin: 0px;
+  text-align: right;
+  padding: 10px;
+  letter-spacing: 3px;
+  font-family: 'roboto';
+  top:0;
+}
+body {
+  font-family: Arial;
+  /* padding: 20px; */
+  background: #f1f1f1;
+  /* cursor: circle; */
+}
+/* .blog_title{
+  font-family: 'Caveat', cursive;
+  font-size: 70px;
+  padding: 0;
+  font-weight: lighter;
+} */
+h4{
+  text-align: left;
+  margin-right: 40px;
+  font-size: 20px;
+}
+/* Header/Blog Title */
+.header {
+  padding-top: 0;
+  padding-right: 20px;
+  padding-bottom: 0px;
+  padding-left:20px;
+  font-size: 40px;
+  text-align: right;
+  font-style: italic;
+  /* background: white; */
+}
+a{
+  color: black;
+  text-decoration:none;
+}
+a:hover {
+  background-color: black;
+  color: white;
+}
+.title:hover{
+  color: black;
+  text-decoration: line-through;
+  text-decoration-color: #f1f1f1;
+}
+hr{
+  /* width: 75%; */
+  border-top: 1px solid black;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Create two unequal columns that floats next to each other */
+/* Left column */
+.leftcolumn {
+  float: left;
+  width: 75%;
+  padding-top: 60px;
+  padding-left: 20px;
+  padding-right: 20px;
+  padding-bottom: 20px;
+}
+.vl {
+  border-left: 1px solid black;
+  height: 1000px;
+  position: fixed;
+  left: 75%;
+  margin-left: -3px;
+  top: 0;
+}
+/* Right column */
+.rightcolumn {
+  float: left;
+  width: 25%;
+  padding-left: 20px;
+  padding: 20px;
+}
+.img {
+  width: 70%;
+  padding: 5px;
+  border-radius: 50%;
+  justify-content: center;
+  margin: 0 auto;
+  display: block;
+}
+.img_post{
+  width:30%;
+  padding:10px;
+}
+.img_hiking{
+  width: 70%;
+  padding: 5px;
+  border-top-left-radius: 50%;
+  border-top-right-radius: 50%;
+  justify-content: center;
+  margin: 0 auto;
+  display: block;
+}
+p{
+  font-family: 'roboto';
+  text-align: left;
+  line-height: 2.2;
+  font-style: italic;
+  font-size: 17px;
+}
+.readmore{
+  font-family: 'roboto';
+  display: flex;
+  padding: 30px 40px;
+  font-style: normal;
+  border: 1px solid black;
+  border-radius: 100%;
+  display: inline-block;
+  /* position: absolute; */
+  /* right: 50%; */
+  margin-bottom:30px;
+  margin-top: 30px;
+  font-size: 12px;
+
+  /* float: right; */
+}
+.curve{
+  width:25%;
+  height: auto;
+  float:right;
+  margin-right: 2rem;
+  shape-outside: circle(50%);
+}
+/* Add a card effect for articles */
+.card {
+  /* background-color: white; */
+  padding:20px;
+  padding-top: 0;
+}
+
+/* Clear floats after the columns */
+.row:after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+/* travel blog css */
+.gallery-wrap{
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+}
+.gallery {
+  margin: 5px;
+  width: 500px;
+}
+
+.gallery img {
+  width: 100%;
+  height: auto;
+  border-radius: 50%;
+}
+.desc {
+  padding: 15px;
+  text-align: left;
+  font-family: 'roboto';
+  line-height: 2.2;
+  font-style: italic;
+  font-size: 17px;
+}
+
+/* Footer */
+.footer {
+  padding: 20px;
+  text-align: center;
+  background: #ddd;
+  margin-top: 20px;
+}
+
+/* Responsive layout - when the screen is less than 800px wide, make the two columns stack on top of each other instead of next to each other */
+@media screen and (max-width: 800px) {
+  .leftcolumn, .rightcolumn {
+    width: 100%;
+    padding: 0;
+  }
+}
