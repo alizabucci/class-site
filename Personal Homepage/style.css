@@ -5,7 +5,7 @@
   overflow: hidden;
   position: fixed;
   width: 100vw;
-  height: 4vh;
+  /* height: 4vh; */
   background-color: black;
   font-size: 15px;
   color: white;
@@ -15,12 +15,16 @@
   letter-spacing: 3px;
   font-family: 'roboto';
   top:0;
+  z-index: 9;
+}
+html{
+  cursor: url(cursor.png) 16 16, auto;
 }
 body {
   font-family: Arial;
   /* padding: 20px; */
   background: #f1f1f1;
-  /* cursor: circle; */
+  margin:0;
 }
 /* .blog_title{
   font-family: 'Caveat', cursive;
@@ -32,6 +36,7 @@ h4{
   text-align: left;
   margin-right: 40px;
   font-size: 20px;
+  margin-left: 20px;
 }
 /* Header/Blog Title */
 .header {
@@ -47,6 +52,7 @@ h4{
 a{
   color: black;
   text-decoration:none;
+  cursor: url(cursor.png) 16 16, auto;
 }
 a:hover {
   background-color: black;
@@ -70,8 +76,8 @@ hr{
   float: left;
   width: 75%;
   padding-top: 60px;
-  padding-left: 20px;
-  padding-right: 20px;
+  /* padding-left: 20px; */
+  /* padding-right: 20px; */
   padding-bottom: 20px;
 }
 .vl {
@@ -101,11 +107,29 @@ hr{
   width:30%;
   padding:10px;
 }
+.img_wellness_post{
+  width:30%;
+  padding:10px;
+  border-top-left-radius: 50%;
+  border-top-right-radius: 50%;
+}
 .img_hiking{
   width: 70%;
   padding: 5px;
   border-top-left-radius: 50%;
   border-top-right-radius: 50%;
+  justify-content: center;
+  margin: 0 auto;
+  display: block;
+}
+.img_art{
+  width: 70%;
+  padding: 5px;
+  /* border-radius: 10%; */
+  border-top-left-radius: 50%;
+  border-top-right-radius: 0;
+  border-bottom-left-radius: 50%;
+  border-bottom-right-radius: 50%;
   justify-content: center;
   margin: 0 auto;
   display: block;
@@ -130,6 +154,7 @@ p{
   margin-bottom:30px;
   margin-top: 30px;
   font-size: 12px;
+  margin-left: 20px;
 
   /* float: right; */
 }
@@ -165,7 +190,6 @@ p{
   margin: 5px;
   width: 500px;
 }
-
 .gallery img {
   width: 100%;
   height: auto;
