@@ -13,7 +13,7 @@
   text-align: right;
   padding: 10px;
   letter-spacing: 3px;
-  font-family: 'roboto';
+  font-family: Arial;
   top:0;
   z-index: 9;
 }
@@ -135,14 +135,14 @@ hr{
   display: block;
 }
 p{
-  font-family: 'roboto';
+  font-family: Arial;
   text-align: left;
   line-height: 2.2;
   font-style: italic;
   font-size: 17px;
 }
 .readmore{
-  font-family: 'roboto';
+  font-family: Arial;
   display: flex;
   padding: 30px 40px;
   font-style: normal;
@@ -198,7 +198,7 @@ p{
 .desc {
   padding: 15px;
   text-align: left;
-  font-family: 'roboto';
+  font-family: Arial;
   line-height: 2.2;
   font-style: italic;
   font-size: 17px;
